@@ -1,0 +1,153 @@
+:root {
+  font-family: "JetBrains Mono", "Consolas", "Menlo", "Monaco", "Microsoft YaHei", monospace;
+  color-scheme: dark;
+  --bg-main: #04080f;
+  --bg-gradient: radial-gradient(circle at 20% 0%, #101c2d 0%, #04080f 42%, #04080f 100%);
+  --panel-bg: #0b121c;
+  --control-bg: #111927;
+  --line-soft: #1d2935;
+  --line-strong: #2a3949;
+  --text-main: #dce5ef;
+  --text-dim: #92a5ba;
+  --accent: #00c7a6;
+  --accent-soft: #5ee8d1;
+  --success: #33d2a5;
+  --danger: #ff7878;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg-main);
+  background-image: var(--bg-gradient);
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 12px;
+  padding-bottom: 56px;
+  display: grid;
+  gap: 10px;
+}
+
+.top-header {
+  border: 1px solid var(--line-strong);
+  background: var(--panel-bg);
+  min-height: 62px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+}
+
+.title-group h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.title-group p {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status {
+  border: 1px solid var(--line-soft);
+  color: var(--text-dim);
+  padding: 4px 8px;
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.status.running {
+  border-color: rgba(0, 199, 166, 0.75);
+  color: var(--accent-soft);
+}
+
+.start-trade {
+  height: 32px;
+  border: 1px solid rgba(0, 199, 166, 0.8);
+  background: rgba(0, 199, 166, 0.92);
+  color: #022018;
+  border-radius: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 14px;
+}
+
+.start-trade:hover {
+  background: rgba(0, 199, 166, 1);
+}
+
+.error-tip {
+  margin: 0;
+  border: 1px solid rgba(255, 120, 120, 0.4);
+  background: rgba(255, 120, 120, 0.08);
+  color: #ff9a9a;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.trade-loading {
+  position: fixed;
+  right: 12px;
+  bottom: 50px;
+  border: 1px solid var(--line-strong);
+  background: rgba(8, 14, 22, 0.95);
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 2px;
+  z-index: 26;
+}
+
+@media (max-width: 1024px) {
+  .top-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 8px;
+    padding-bottom: 56px;
+  }
+
+  .title-group h1 {
+    font-size: 17px;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .status {
+    max-width: calc(100% - 112px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
