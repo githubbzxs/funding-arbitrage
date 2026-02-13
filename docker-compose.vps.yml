@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: fa-postgres
+    environment:
+      POSTGRES_DB: funding_arbitrage
+      POSTGRES_USER: funding_user
+      POSTGRES_PASSWORD: funding_pass
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U funding_user -d funding_arbitrage"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: fa-redis
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      network: host
+    container_name: fa-backend
+    environment:
+      FA_APP_ENV: "prod"
+      FA_DATABASE_URL: "postgresql+asyncpg://funding_user:funding_pass@postgres:5432/funding_arbitrage"
+      FA_REDIS_URL: "redis://redis:6379/0"
+      FA_CORS_ORIGINS: "http://154.201.95.70:8080,http://localhost,http://127.0.0.1"
+      FA_ENABLE_CCXT_MARKET_LEVERAGE: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      network: host
+    container_name: fa-frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pg_data:
+  redis_data:
