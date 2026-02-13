@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime
 
 import httpx
@@ -100,11 +101,21 @@ class OkxFetcher(BaseExchangeFetcher):
         inst_ids: list[str],
     ) -> dict[str, dict]:
         settings = get_settings()
-        semaphore = asyncio.Semaphore(max(4, settings.max_concurrency_per_exchange))
+        concurrency = max(4, settings.max_concurrency_per_exchange)
+        semaphore = asyncio.Semaphore(concurrency)
+        budget_seconds = max(0.5, settings.okx_funding_fetch_budget_seconds)
+        started_at = time.monotonic()
         result: dict[str, dict] = {}
 
         async def worker(inst_id: str) -> None:
+            # OKX funding-rate 需要逐合约请求，合约数较多时会显著拖慢整次快照。
+            # 这里做一个总体时间预算：超时后直接降级返回部分 funding-rate，
+            # 避免前端 Nginx 等待超时导致 504。
+            if time.monotonic() - started_at > budget_seconds:
+                return
             async with semaphore:
+                if time.monotonic() - started_at > budget_seconds:
+                    return
                 try:
                     payload = await self._request_json(
                         client,
@@ -118,7 +129,12 @@ class OkxFetcher(BaseExchangeFetcher):
                 if rows:
                     result[inst_id] = rows[0]
 
-        await asyncio.gather(*(worker(inst_id) for inst_id in inst_ids))
+        batch_size = concurrency * 3
+        for offset in range(0, len(inst_ids), batch_size):
+            if time.monotonic() - started_at > budget_seconds:
+                break
+            batch = inst_ids[offset : offset + batch_size]
+            await asyncio.gather(*(worker(inst_id) for inst_id in batch))
         return result
 
 
@@ -131,4 +147,3 @@ def _infer_okx_funding_interval(
         if diff_hours > 0:
             return diff_hours
     return 8.0
-

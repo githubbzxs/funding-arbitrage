@@ -73,7 +73,12 @@ class MarketDataService:
         client: httpx.AsyncClient,
     ) -> tuple[list[MarketSnapshot], FetchError | None]:
         try:
-            data = await fetcher.fetch_snapshots(client)
+            data = await asyncio.wait_for(
+                fetcher.fetch_snapshots(client),
+                timeout=self._settings.exchange_fetch_timeout_seconds,
+            )
             return data, None
+        except asyncio.TimeoutError:
+            return [], FetchError(exchange=fetcher.exchange, message="抓取超时")
         except Exception as exc:
             return [], FetchError(exchange=fetcher.exchange, message=str(exc))
