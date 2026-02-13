@@ -61,4 +61,3 @@ def scan_opportunities(
 
     opportunities.sort(key=lambda item: item.spread_rate_1y_nominal, reverse=True)
     return opportunities
-

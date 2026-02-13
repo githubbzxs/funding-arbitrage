@@ -31,9 +31,12 @@ _locks: dict[SupportedExchange, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 async def get_leverage_map(exchange: SupportedExchange) -> dict[str, float]:
-    """从 ccxt 读取并缓存各交易所的 USDT 永续最大杠杆。"""
+    """读取并缓存各交易所 USDT 永续最大杠杆。"""
 
     settings = get_settings()
+    if not settings.enable_ccxt_market_leverage:
+        return {}
+
     now_ts = utc_now().timestamp()
     cached = _cache.get(exchange)
     if cached and cached.expires_at_ts > now_ts:
@@ -60,7 +63,7 @@ async def _load_from_ccxt(exchange: SupportedExchange) -> dict[str, float]:
 
     try:
         import ccxt.async_support as ccxt_async  # type: ignore
-    except Exception as exc:  # pragma: no cover - 环境缺库时回退
+    except Exception as exc:  # pragma: no cover
         logger.warning("ccxt 导入失败，无法加载杠杆信息: %s", exc)
         return leverage_map
 
@@ -100,8 +103,8 @@ async def _load_from_ccxt(exchange: SupportedExchange) -> dict[str, float]:
 
             if leverage_max is not None:
                 leverage_map[symbol] = leverage_max
-    except Exception as exc:  # pragma: no cover - 外部接口不可控
-        logger.warning("从 ccxt 加载 %s 杠杆信息失败: %s", exchange, exc)
+    except Exception as exc:  # pragma: no cover
+        logger.warning("通过 ccxt 加载 %s 杠杆信息失败: %s", exchange, exc)
     finally:
         try:
             await client.close()
@@ -109,4 +112,3 @@ async def _load_from_ccxt(exchange: SupportedExchange) -> dict[str, float]:
             pass
 
     return leverage_map
-

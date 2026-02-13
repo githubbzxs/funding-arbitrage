@@ -273,4 +273,3 @@ class PositionsResponse(BaseModel):
 
     total: int
     items: list[PositionRead]
-

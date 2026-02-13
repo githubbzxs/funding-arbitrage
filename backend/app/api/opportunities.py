@@ -26,4 +26,3 @@ async def get_opportunities(
         opportunities=selected,
         errors=snapshots.errors,
     )
-

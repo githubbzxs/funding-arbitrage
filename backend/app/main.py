@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.execution import router as execution_router
 from app.api.market import router as market_router
@@ -17,6 +18,14 @@ app = FastAPI(
     description="资金费率套利系统后端服务",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list or ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(market_router)
 app.include_router(opportunities_router)
 app.include_router(execution_router)
@@ -33,4 +42,3 @@ async def on_startup() -> None:
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok", "ts": utc_now().isoformat()}
-

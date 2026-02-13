@@ -12,4 +12,3 @@ async def get_market_snapshots() -> MarketSnapshotsResponse:
     """获取 5 所统一市场快照。"""
 
     return await market_data_service.fetch_snapshots()
-

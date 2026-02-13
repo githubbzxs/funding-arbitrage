@@ -65,4 +65,3 @@ async def emergency_close(
     """紧急全平。"""
 
     return await execution_service.emergency_close(session, request)
-

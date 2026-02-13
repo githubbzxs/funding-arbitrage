@@ -60,7 +60,7 @@ class CcxtExecutionGateway:
     ) -> GatewayResult:
         try:
             import ccxt.async_support as ccxt_async  # type: ignore
-        except Exception as exc:  # pragma: no cover - 环境缺库时回退
+        except Exception as exc:  # pragma: no cover
             return GatewayResult(
                 success=False,
                 order_id=None,
@@ -107,7 +107,7 @@ class CcxtExecutionGateway:
                 try:
                     await client.set_leverage(leverage, ccxt_symbol)
                 except Exception:
-                    # 部分交易所或产品不支持动态设杠杆，不阻断下单。
+                    # 某些交易所不支持动态设杠杆，不阻断下单。
                     pass
 
             order = await client.create_order(
@@ -688,7 +688,6 @@ class ExecutionService:
                 "short_qty": position.short_qty,
             }
 
-        # 这里依赖请求模型校验，字段均已非空。
         return {
             "position": None,
             "symbol": request.symbol,
@@ -712,4 +711,3 @@ def _as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {"value": value}
-

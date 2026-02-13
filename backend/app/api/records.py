@@ -38,4 +38,3 @@ async def list_orders(
         stmt = stmt.where(Order.action == action)
     rows = list((await session.scalars(stmt)).all())
     return OrdersResponse(total=len(rows), items=[OrderRead.model_validate(row) for row in rows])
-
