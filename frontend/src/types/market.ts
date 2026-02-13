@@ -44,6 +44,8 @@ export interface MarketMeta {
   cacheHit: boolean;
   exchangesOk: string[];
   exchangesFailed: string[];
+  exchangeSources: Record<string, string>;
+  exchangeCounts: Record<string, number>;
 }
 
 export interface OpportunityLegInfo {

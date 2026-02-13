@@ -72,6 +72,35 @@ function asObject(data: unknown): GenericObject {
   return {};
 }
 
+function readStringRecord(data: unknown): Record<string, string> {
+  if (typeof data !== 'object' || data === null) {
+    return {};
+  }
+  const source = data as GenericObject;
+  const record: Record<string, string> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    if (typeof value === 'string' && value.trim()) {
+      record[key] = value.trim();
+    }
+  });
+  return record;
+}
+
+function readNumberRecord(data: unknown): Record<string, number> {
+  if (typeof data !== 'object' || data === null) {
+    return {};
+  }
+  const source = data as GenericObject;
+  const record: Record<string, number> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    const parsed = toNumber(value, Number.NaN);
+    if (Number.isFinite(parsed)) {
+      record[key] = parsed;
+    }
+  });
+  return record;
+}
+
 function hourLabel(hours: number): string {
   if (!Number.isFinite(hours) || hours <= 0) {
     return '-';
@@ -201,11 +230,15 @@ function normalizeMeta(payload: unknown): MarketMeta | null {
   const fetchMsRaw = readOptionalNumber(meta, ['fetch_ms', 'fetchMs']);
   const exchangesOk = Array.isArray(meta.exchanges_ok) ? meta.exchanges_ok : [];
   const exchangesFailed = Array.isArray(meta.exchanges_failed) ? meta.exchanges_failed : [];
+  const exchangeSources = readStringRecord(meta.exchange_sources ?? meta.exchangeSources);
+  const exchangeCounts = readNumberRecord(meta.exchange_counts ?? meta.exchangeCounts);
   return {
     fetchMs: fetchMsRaw,
     cacheHit: Boolean(meta.cache_hit ?? meta.cacheHit),
     exchangesOk: exchangesOk.filter((item): item is string => typeof item === 'string' && item.length > 0),
-    exchangesFailed: exchangesFailed.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    exchangesFailed: exchangesFailed.filter((item): item is string => typeof item === 'string' && item.length > 0),
+    exchangeSources,
+    exchangeCounts
   };
 }
 

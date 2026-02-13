@@ -239,6 +239,22 @@ const statusLine = computed(() => {
   if (marketMeta.value?.exchangesFailed?.length) {
     parts.push(`失败: ${marketMeta.value.exchangesFailed.join(',')}`);
   }
+  if (marketMeta.value?.exchangeSources) {
+    const sourceParts = Object.entries(marketMeta.value.exchangeSources)
+      .filter(([, source]) => source && source !== 'ccxt')
+      .map(([exchange, source]) => `${exchange}:${source}`);
+    if (sourceParts.length > 0) {
+      parts.push(`来源: ${sourceParts.join(',')}`);
+    }
+  }
+  if (marketMeta.value?.exchangeCounts) {
+    const zeroParts = Object.entries(marketMeta.value.exchangeCounts)
+      .filter(([, count]) => count <= 0)
+      .map(([exchange]) => exchange);
+    if (zeroParts.length > 0) {
+      parts.push(`0快照: ${zeroParts.join(',')}`);
+    }
+  }
   return parts.join(' | ');
 });
 

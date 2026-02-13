@@ -5,7 +5,10 @@ import time
 from datetime import datetime
 from typing import Any
 
+import httpx
+
 from app.core.config import get_settings
+from app.exchanges.gateio import GateIoFetcher
 from app.exchanges.leverage import CCXT_EXCHANGE_MAP, get_leverage_map
 from app.exchanges.utils import build_snapshot, normalize_usdt_symbol, parse_exchange_timestamp, safe_float
 from app.models.schemas import MarketSnapshot, SupportedExchange
@@ -102,8 +105,36 @@ class CcxtMarketProvider:
         self.exchange = exchange
         self._settings = get_settings()
         self._ccxt_id = CCXT_EXCHANGE_MAP[exchange]
+        self._gateio_fallback_fetcher = GateIoFetcher() if exchange == "gateio" else None
 
     async def fetch_snapshots(self) -> list[MarketSnapshot]:
+        snapshots, _ = await self.fetch_snapshots_with_source()
+        return snapshots
+
+    async def fetch_snapshots_with_source(self) -> tuple[list[MarketSnapshot], str]:
+        if self.exchange != "gateio":
+            snapshots = await self._fetch_ccxt_snapshots()
+            return snapshots, "ccxt"
+
+        ccxt_error: Exception | None = None
+        ccxt_snapshots: list[MarketSnapshot] = []
+        try:
+            ccxt_snapshots = await self._fetch_ccxt_snapshots()
+        except Exception as exc:
+            ccxt_error = exc
+
+        if ccxt_snapshots:
+            return ccxt_snapshots, "ccxt"
+
+        fallback_snapshots = await self._fetch_gateio_fallback()
+        if fallback_snapshots:
+            return fallback_snapshots, "legacy_rest"
+
+        if ccxt_error is not None:
+            raise RuntimeError(f"gateio ccxt 抓取失败且原生兜底为空: {ccxt_error}") from ccxt_error
+        raise RuntimeError("gateio ccxt 抓取为空且原生兜底为空")
+
+    async def _fetch_ccxt_snapshots(self) -> list[MarketSnapshot]:
         try:
             import ccxt.async_support as ccxt_async  # type: ignore
         except Exception as exc:  # pragma: no cover
@@ -163,6 +194,15 @@ class CcxtMarketProvider:
                 await client.close()
             except Exception:
                 pass
+
+    async def _fetch_gateio_fallback(self) -> list[MarketSnapshot]:
+        if self.exchange != "gateio" or self._gateio_fallback_fetcher is None:
+            return []
+
+        timeout = httpx.Timeout(self._settings.request_timeout_seconds)
+        limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
+        async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+            return await self._gateio_fallback_fetcher.fetch_snapshots(client)
 
     async def _fetch_funding_rows(self, client: Any) -> dict[str, dict[str, Any]]:
         has = getattr(client, "has", {}) or {}

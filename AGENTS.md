@@ -93,3 +93,8 @@
   - Why：聚焦套利决策核心指标，减少信息噪音。
   - Impact：`frontend/src/components/TopFilters.vue`，`frontend/src/components/MarketTable.vue`，`frontend/src/types/market.ts`
   - Verify：前端页面确认无 OI/成交额阈值输入且主表不显示 OI/交易量。
+
+- **[2026-02-13] 杠杆后年化与可用杠杆恢复并补齐 Gate.io 容错**：Binance 杠杆优先走公共档位接口，Gate.io 在 ccxt 空结果时回退原生 REST，市场聚合把“空结果”视为失败并使用短期 stale 快照兜底，同时默认开启 `FA_ENABLE_CCXT_MARKET_LEVERAGE`。
+  - Why：修复“杠杆后年化/可用杠杆缺失”与“Gate.io 间歇缺失”导致的机会列表不稳定问题。
+  - Impact：`backend/app/exchanges/leverage.py`，`backend/app/exchanges/providers/ccxt_market.py`，`backend/app/services/market_data.py`，`frontend/src/api/market.ts`，`frontend/src/types/market.ts`，`frontend/src/pages/MarketPage.vue`，`docker-compose.yml`，`docker-compose.vps.yml`
+  - Verify：`cd backend && pytest -q`，`cd frontend && npm run build`，调用 `GET /api/market/snapshots` 检查 `meta.exchange_sources` 与 `meta.exchange_counts`。

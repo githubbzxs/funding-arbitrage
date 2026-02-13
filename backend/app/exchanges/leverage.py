@@ -3,9 +3,11 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 
+import httpx
+
 from app.core.config import get_settings
 from app.core.time import utc_now
-from app.exchanges.utils import canonical_from_base_quote, safe_float
+from app.exchanges.utils import canonical_from_base_quote, normalize_usdt_symbol, safe_float
 from app.models.schemas import SupportedExchange
 
 
@@ -28,6 +30,7 @@ class CacheEntry:
 
 _cache: dict[SupportedExchange, CacheEntry] = {}
 _locks: dict[SupportedExchange, asyncio.Lock] = defaultdict(asyncio.Lock)
+_BINANCE_PUBLIC_BRACKETS_URL = "https://www.binance.com/bapi/futures/v1/friendly/future/common/brackets"
 
 
 async def get_leverage_map(exchange: SupportedExchange) -> dict[str, float]:
@@ -49,12 +52,72 @@ async def get_leverage_map(exchange: SupportedExchange) -> dict[str, float]:
         if cached and cached.expires_at_ts > now_ts:
             return cached.data
 
-        data = await _load_from_ccxt(exchange)
+        if exchange == "binance":
+            data = await _load_binance_public_leverage_map()
+            if not data:
+                data = await _load_from_ccxt(exchange)
+        else:
+            data = await _load_from_ccxt(exchange)
         _cache[exchange] = CacheEntry(
             expires_at_ts=now_ts + settings.leverage_cache_ttl_seconds,
             data=data,
         )
         return data
+
+
+def _parse_binance_public_brackets(payload: object) -> dict[str, float]:
+    leverage_map: dict[str, float] = {}
+    if not isinstance(payload, dict):
+        return leverage_map
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return leverage_map
+
+    brackets = data.get("brackets")
+    if not isinstance(brackets, list):
+        return leverage_map
+
+    for row in brackets:
+        if not isinstance(row, dict):
+            continue
+        symbol = normalize_usdt_symbol(str(row.get("symbol", "")))
+        if not symbol:
+            continue
+
+        leverage_max = safe_float(row.get("maxLeverage"))
+        risk_rows = row.get("riskBrackets")
+        if isinstance(risk_rows, list):
+            for tier in risk_rows:
+                if not isinstance(tier, dict):
+                    continue
+                parsed = safe_float(tier.get("maxOpenPosLeverage"))
+                if parsed is None or parsed <= 0:
+                    continue
+                if leverage_max is None or parsed > leverage_max:
+                    leverage_max = parsed
+
+        if leverage_max is not None and leverage_max > 0:
+            leverage_map[symbol] = leverage_max
+
+    return leverage_map
+
+
+async def _load_binance_public_leverage_map() -> dict[str, float]:
+    try:
+        timeout = httpx.Timeout(12.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(_BINANCE_PUBLIC_BRACKETS_URL)
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Binance 公共杠杆抓取失败: %s", exc)
+        return {}
+
+    leverage_map = _parse_binance_public_brackets(payload)
+    if not leverage_map:
+        logger.warning("Binance 公共杠杆抓取返回空结果")
+    return leverage_map
 
 
 async def _load_from_ccxt(exchange: SupportedExchange) -> dict[str, float]:
@@ -78,7 +141,10 @@ async def _load_from_ccxt(exchange: SupportedExchange) -> dict[str, float]:
         }
     )
     try:
-        await client.load_markets()
+        if exchange == "bybit":
+            await client.load_markets(params={"type": "swap"})
+        else:
+            await client.load_markets()
         for market in client.markets.values():
             if not market.get("swap"):
                 continue
