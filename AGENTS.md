@@ -128,3 +128,8 @@
   - Why：解决“页面撑开后信息看不全”与“多指标口径分散”问题，把不同结算间隔下的单边机会和每次金额统一到可对比口径。
   - Impact：`backend/app/api/market.py`，`backend/app/models/schemas.py`，`backend/app/services/market_board.py`，`backend/tests/test_market_board.py`，`frontend/src/api/market.ts`，`frontend/src/types/market.ts`，`frontend/src/utils/marginSim.ts`，`frontend/src/utils/marginSim.test.ts`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/components/ScannerToolbar.vue`，`frontend/src/components/ScannerTableVirtual.vue`，`frontend/src/components/ScannerMobileCards.vue`，`frontend/src/pages/PairDetailPage.vue`，`frontend/src/composables/useScannerQuery.ts`
   - Verify：`cd backend && pytest -q`，`cd frontend && npm run test`，`cd frontend && npm run build`
+
+- **[2026-02-13] 扫描页首屏改为“持久化缓存优先 + 5分钟策略对齐”**：`useScannerQuery` 新增 localStorage 持久缓存并注入 `initialData`，后端默认 `market_cache_ttl_seconds` 调整为 `300`，扫描页默认自动刷新间隔改为 `300` 秒并在工具栏增加 `300` 秒选项。
+  - Why：修复“进入页面仍需等待网络返回”的体验问题，确保尽量先出上次数据，再后台更新。
+  - Impact：`frontend/src/composables/useScannerQuery.ts`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/components/ScannerToolbar.vue`，`backend/app/core/config.py`
+  - Verify：`cd frontend && npm run test`，`cd frontend && npm run build`，`cd backend && pytest -q`，`https://funding.0xpsyche.me/healthz`
