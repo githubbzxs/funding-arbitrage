@@ -58,3 +58,11 @@
   - Verify：使用各交易所 API Key 在 `/api/execution/open` 做小额联调。
 - **[2026-02-13] 托管凭据解密**：更换 `FA_CREDENTIAL_ENCRYPTION_KEY` 后历史托管凭据将无法解密。
   - Verify：调用 `GET /api/credentials` 检查 `api_key_masked` 是否可展示（缺密钥/密钥错误时可能为空）。
+
+## Deploy Memory
+
+- **[2026-02-13] VPS部署完成并接入域名**：应用已在服务器 `154.201.95.70` 通过 `docker compose -f docker-compose.vps.yml up -d --build` 更新到 `main` 最新提交（`dabbaeb`）。
+  - Verify：`docker compose -f docker-compose.vps.yml ps` 显示 `fa-frontend/fa-backend/fa-postgres/fa-redis` 均为 `Up`。
+- **[2026-02-13] 域名接入完成**：`funding.0xpsyche.me` 已解析到 `154.201.95.70`，并由系统 Nginx 反向代理到 `127.0.0.1:8080`，已签发 Let’s Encrypt 证书并启用 HTTPS。
+  - Verify：`https://funding.0xpsyche.me/healthz` 返回 `{"status":"ok"}`，`https://funding.0xpsyche.me/api/market/snapshots` 返回 `200`。
+- **[2026-02-13] 安全约束**：部署凭据仅用于本次会话，不写入仓库记忆文件。
