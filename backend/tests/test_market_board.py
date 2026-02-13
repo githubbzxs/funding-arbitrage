@@ -81,3 +81,19 @@ def test_board_rows_limit_works() -> None:
 
     assert len(rows) == 2
     assert [row.symbol for row in rows] == ["BTCUSDT", "SOLUSDT"]
+
+
+def test_board_rows_supports_symbol_filter() -> None:
+    snapshots = [
+        _snapshot(exchange="binance", symbol="BTCUSDT", nominal_rate_1y=-0.10, max_leverage=20),
+        _snapshot(exchange="okx", symbol="BTCUSDT", nominal_rate_1y=0.20, max_leverage=10),
+        _snapshot(exchange="gateio", symbol="ETHUSDT", nominal_rate_1y=0.10),
+        _snapshot(exchange="bybit", symbol="ETHUSDT", nominal_rate_1y=0.60),
+    ]
+
+    btc_rows = build_board_rows_from_snapshots(snapshots=snapshots, symbol="BTCUSDT", limit=10)
+    empty_rows = build_board_rows_from_snapshots(snapshots=snapshots, symbol="SOLUSDT", limit=10)
+
+    assert len(btc_rows) == 1
+    assert btc_rows[0].symbol == "BTCUSDT"
+    assert empty_rows == []

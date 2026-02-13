@@ -1,14 +1,15 @@
-import type { MarketFetchError, MarketMeta, MarketRow, TradingRecord } from '../types/market';
+import type { BoardMeta, BoardQuery, MarketBoardResult, MarketFetchError, OpportunityBoardLeg, OpportunityBoardRow, TradingRecord } from '../types/market';
 import { toNumber } from '../utils/format';
 import { request } from './http';
 
 type GenericObject = Record<string, unknown>;
 
-export type SnapshotResult = {
-  rows: MarketRow[];
-  errors: MarketFetchError[];
-  meta: MarketMeta | null;
-};
+function asObject(input: unknown): GenericObject {
+  if (typeof input === 'object' && input !== null) {
+    return input as GenericObject;
+  }
+  return {};
+}
 
 function readString(record: GenericObject, keys: string[], fallback = ''): string {
   for (const key of keys) {
@@ -20,7 +21,7 @@ function readString(record: GenericObject, keys: string[], fallback = ''): strin
   return fallback;
 }
 
-function readNumber(record: GenericObject, keys: string[], fallback = 0): number {
+function readNumber(record: GenericObject, keys: string[], fallback = Number.NaN): number {
   for (const key of keys) {
     if (!(key in record)) {
       continue;
@@ -34,228 +35,171 @@ function readNumber(record: GenericObject, keys: string[], fallback = 0): number
 }
 
 function readOptionalNumber(record: GenericObject, keys: string[]): number | null {
+  const parsed = readNumber(record, keys, Number.NaN);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readArray(record: GenericObject, keys: string[]): GenericObject[] {
   for (const key of keys) {
-    if (!(key in record)) {
-      continue;
-    }
-    const parsed = toNumber(record[key], Number.NaN);
-    if (Number.isFinite(parsed)) {
-      return parsed;
+    const value = record[key];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is GenericObject => typeof item === 'object' && item !== null);
     }
   }
-  return null;
+  return [];
+}
+
+function readStringRecord(input: unknown): Record<string, string> {
+  const source = asObject(input);
+  const output: Record<string, string> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    if (typeof value === 'string' && value.trim()) {
+      output[key] = value.trim();
+    }
+  });
+  return output;
+}
+
+function readNumberRecord(input: unknown): Record<string, number> {
+  const source = asObject(input);
+  const output: Record<string, number> = {};
+  Object.entries(source).forEach(([key, value]) => {
+    const parsed = toNumber(value, Number.NaN);
+    if (Number.isFinite(parsed)) {
+      output[key] = parsed;
+    }
+  });
+  return output;
+}
+
+function readStringList(input: unknown): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim());
+}
+
+function toLeg(raw: GenericObject): OpportunityBoardLeg {
+  const intervalRaw = readOptionalNumber(raw, ['settlement_interval', 'settlementInterval']);
+  const intervalText =
+    intervalRaw !== null && Number.isFinite(intervalRaw) && intervalRaw > 0 ? `${intervalRaw}h` : readString(raw, ['settlement_interval', 'settlementInterval'], '-');
+  return {
+    exchange: readString(raw, ['exchange'], '-'),
+    openInterestUsd: readOptionalNumber(raw, ['open_interest_usd', 'openInterestUsd']),
+    volume24hUsd: readOptionalNumber(raw, ['volume24h_usd', 'volume24hUsd']),
+    fundingRateRaw: readOptionalNumber(raw, ['funding_rate_raw', 'fundingRateRaw']),
+    fundingRate1h: readOptionalNumber(raw, ['rate_1h', 'rate1h']),
+    fundingRate8h: readOptionalNumber(raw, ['rate_8h', 'rate8h']),
+    fundingRate1y: readOptionalNumber(raw, ['rate_1y', 'rate1y']),
+    nextFundingTime: readString(raw, ['next_funding_time', 'nextFundingTime']),
+    settlementInterval: intervalText,
+    maxLeverage: readOptionalNumber(raw, ['max_leverage', 'maxLeverage']),
+    leveragedNominalRate1y: readOptionalNumber(raw, ['leveraged_nominal_rate_1y', 'leveragedNominalRate1y'])
+  };
+}
+
+function toRow(raw: GenericObject): OpportunityBoardRow {
+  const longExchange = readString(raw, ['long_exchange', 'longExchange'], '');
+  const shortExchange = readString(raw, ['short_exchange', 'shortExchange'], '');
+  const longLeg = toLeg(asObject(raw.long_leg));
+  const shortLeg = toLeg(asObject(raw.short_leg));
+  if (!longLeg.exchange || longLeg.exchange === '-') {
+    longLeg.exchange = longExchange || '-';
+  }
+  if (!shortLeg.exchange || shortLeg.exchange === '-') {
+    shortLeg.exchange = shortExchange || '-';
+  }
+  const spreadRate1yNominal = readNumber(raw, ['spread_rate_1y_nominal', 'spreadRate1yNominal'], 0);
+  return {
+    id: readString(raw, ['id'], `${readString(raw, ['symbol'], '-')}-${longExchange || longLeg.exchange}-${shortExchange || shortLeg.exchange}`),
+    symbol: readString(raw, ['symbol'], '-'),
+    longExchange: longExchange || longLeg.exchange,
+    shortExchange: shortExchange || shortLeg.exchange,
+    longLeg,
+    shortLeg,
+    spreadRate1h: readOptionalNumber(raw, ['spread_rate_1h', 'spreadRate1h']),
+    spreadRate8h: readOptionalNumber(raw, ['spread_rate_8h', 'spreadRate8h']),
+    spreadRate1yNominal,
+    leveragedSpreadRate1yNominal: readOptionalNumber(raw, ['leveraged_spread_rate_1y_nominal', 'leveragedSpreadRate1yNominal']),
+    maxUsableLeverage: readOptionalNumber(raw, ['max_usable_leverage', 'maxUsableLeverage'])
+  };
+}
+
+function toMeta(raw: unknown): BoardMeta | null {
+  const input = asObject(raw);
+  if (Object.keys(input).length === 0) {
+    return null;
+  }
+  return {
+    fetchMs: readOptionalNumber(input, ['fetch_ms', 'fetchMs']),
+    cacheHit: Boolean(input.cache_hit ?? input.cacheHit),
+    exchangesOk: readStringList(input.exchanges_ok ?? input.exchangesOk),
+    exchangesFailed: readStringList(input.exchanges_failed ?? input.exchangesFailed),
+    exchangeSources: readStringRecord(input.exchange_sources ?? input.exchangeSources),
+    exchangeCounts: readNumberRecord(input.exchange_counts ?? input.exchangeCounts)
+  };
+}
+
+function toErrors(raw: unknown): MarketFetchError[] {
+  return readArray(asObject({ errors: raw }), ['errors'])
+    .map((item) => ({
+      exchange: readString(item, ['exchange'], ''),
+      message: readString(item, ['message'], '未知错误')
+    }))
+    .filter((item) => item.exchange.length > 0 || item.message.length > 0);
+}
+
+function buildBoardQueryString(query?: BoardQuery): string {
+  if (!query) {
+    return '';
+  }
+  const params = new URLSearchParams();
+  if (query.limit && query.limit > 0) {
+    params.set('limit', String(query.limit));
+  }
+  if (typeof query.minSpreadRate1yNominal === 'number') {
+    params.set('min_spread_rate_1y_nominal', String(query.minSpreadRate1yNominal));
+  }
+  if (query.forceRefresh) {
+    params.set('force_refresh', '1');
+  }
+  if (query.exchanges && query.exchanges.length > 0) {
+    query.exchanges.forEach((exchange) => {
+      if (exchange.trim()) {
+        params.append('exchanges', exchange.trim().toLowerCase());
+      }
+    });
+  }
+  if (query.symbol && query.symbol.trim()) {
+    params.set('symbol', query.symbol.trim().toUpperCase());
+  }
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
+export async function fetchBoard(query?: BoardQuery): Promise<MarketBoardResult> {
+  const payload = await request<unknown>(`/api/market/board${buildBoardQueryString(query)}`);
+  const root = asObject(payload);
+  const rows = readArray(root, ['rows']).map(toRow);
+  return {
+    asOf: readString(root, ['as_of', 'asOf']),
+    total: readNumber(root, ['total'], rows.length),
+    rows,
+    errors: toErrors(root.errors),
+    meta: toMeta(root.meta)
+  };
 }
 
 function normalizeList(data: unknown): GenericObject[] {
   if (Array.isArray(data)) {
     return data.filter((item): item is GenericObject => typeof item === 'object' && item !== null);
   }
-
-  if (typeof data === 'object' && data !== null) {
-    const container = data as GenericObject;
-    const candidateKeys = ['data', 'items', 'rows', 'result', 'snapshots', 'opportunities'];
-    for (const key of candidateKeys) {
-      const value = container[key];
-      if (Array.isArray(value)) {
-        return value.filter((item): item is GenericObject => typeof item === 'object' && item !== null);
-      }
-    }
+  const root = asObject(data);
+  const list = root.items;
+  if (Array.isArray(list)) {
+    return list.filter((item): item is GenericObject => typeof item === 'object' && item !== null);
   }
-
   return [];
-}
-
-function asObject(data: unknown): GenericObject {
-  if (typeof data === 'object' && data !== null) {
-    return data as GenericObject;
-  }
-  return {};
-}
-
-function readStringRecord(data: unknown): Record<string, string> {
-  if (typeof data !== 'object' || data === null) {
-    return {};
-  }
-  const source = data as GenericObject;
-  const record: Record<string, string> = {};
-  Object.entries(source).forEach(([key, value]) => {
-    if (typeof value === 'string' && value.trim()) {
-      record[key] = value.trim();
-    }
-  });
-  return record;
-}
-
-function readNumberRecord(data: unknown): Record<string, number> {
-  if (typeof data !== 'object' || data === null) {
-    return {};
-  }
-  const source = data as GenericObject;
-  const record: Record<string, number> = {};
-  Object.entries(source).forEach(([key, value]) => {
-    const parsed = toNumber(value, Number.NaN);
-    if (Number.isFinite(parsed)) {
-      record[key] = parsed;
-    }
-  });
-  return record;
-}
-
-function hourLabel(hours: number): string {
-  if (!Number.isFinite(hours) || hours <= 0) {
-    return '-';
-  }
-  const normalized = Math.round(hours * 100) / 100;
-  if (Number.isInteger(normalized)) {
-    return `${normalized.toFixed(0)}h`;
-  }
-  return `${normalized}h`;
-}
-
-function buildSnapshotRow(raw: GenericObject): MarketRow {
-  const intervalHours = readNumber(raw, ['funding_interval_hours', 'fundingIntervalHours', 'intervalHours'], 8);
-  const fundingRaw = readOptionalNumber(raw, ['funding_rate_raw', 'fundingRateRaw']);
-
-  const rate1hApi = readOptionalNumber(raw, ['rate_1h', 'rate1h']);
-  const rate1h = rate1hApi ?? (fundingRaw !== null && intervalHours > 0 ? fundingRaw / intervalHours : null);
-
-  const rate8hApi = readOptionalNumber(raw, ['rate_8h', 'rate8h']);
-  const rate8h = rate8hApi ?? (rate1h !== null ? rate1h * 8 : null);
-
-  const rate1yApi = readOptionalNumber(raw, ['rate_1y', 'rate1y']);
-  const rate1y = rate1yApi ?? (rate1h !== null ? rate1h * 24 * 365 : null);
-
-  const maxLeverage = readOptionalNumber(raw, ['max_leverage', 'maxLeverage']);
-  const nominalApi = readOptionalNumber(raw, ['nominal_rate_1y', 'nominalRate1y']);
-  const nominal = nominalApi ?? (rate1h !== null ? rate1h * 24 * 365 : null);
-  const leveragedNominalApi = readOptionalNumber(raw, ['leveraged_nominal_rate_1y', 'leveragedNominalRate1y']);
-  const leveragedNominal =
-    leveragedNominalApi ?? (nominal !== null && maxLeverage !== null ? nominal * maxLeverage : null);
-
-  return {
-    id: `${readString(raw, ['exchange'])}-${readString(raw, ['symbol'])}`,
-    exchange: readString(raw, ['exchange'], '-'),
-    symbol: readString(raw, ['symbol'], '-'),
-    openInterestUsd: readNumber(raw, ['oi_usd', 'oiUsd'], 0),
-    volume24hUsd: readNumber(raw, ['vol24h_usd', 'vol24hUsd'], 0),
-    fundingRate1h: rate1h,
-    fundingRate8h: rate8h,
-    fundingRate1y: rate1y,
-    nextFundingTime: readString(raw, ['next_funding_time', 'nextFundingTime'], ''),
-    nextFundingRate: fundingRaw,
-    settlementInterval: hourLabel(intervalHours),
-    maxLeverage,
-    nominalApr: nominal,
-    leveragedNominalApr: leveragedNominal,
-    maxUsableLeverage: maxLeverage,
-    source: 'snapshot'
-  };
-}
-
-function buildOpportunityRow(raw: GenericObject): MarketRow {
-  const longRate8h = readOptionalNumber(raw, ['long_rate_8h', 'longRate8h']);
-  const shortRate8h = readOptionalNumber(raw, ['short_rate_8h', 'shortRate8h']);
-  const spreadNominal = readNumber(raw, ['spread_rate_1y_nominal', 'spreadRate1yNominal'], 0);
-  const longExchange = readString(raw, ['long_exchange', 'longExchange'], '');
-  const shortExchange = readString(raw, ['short_exchange', 'shortExchange'], '');
-  const longNextFundingTime = readString(raw, ['long_next_funding_time', 'longNextFundingTime']);
-  const shortNextFundingTime = readString(raw, ['short_next_funding_time', 'shortNextFundingTime']);
-  const longMaxLeverage = readOptionalNumber(raw, ['long_max_leverage', 'longMaxLeverage']);
-  const shortMaxLeverage = readOptionalNumber(raw, ['short_max_leverage', 'shortMaxLeverage']);
-  const maxUsableApi = readOptionalNumber(raw, ['max_usable_leverage', 'maxUsableLeverage']);
-  const maxUsable =
-    maxUsableApi ??
-    (longMaxLeverage !== null && shortMaxLeverage !== null ? Math.min(longMaxLeverage, shortMaxLeverage) : null);
-  const leveragedSpreadApi = readOptionalNumber(raw, ['leveraged_spread_rate_1y_nominal', 'leveragedSpreadRate1yNominal']);
-  const leveragedSpread = leveragedSpreadApi ?? (maxUsable !== null ? spreadNominal * maxUsable : null);
-
-  const rate8h = longRate8h !== null && shortRate8h !== null ? shortRate8h - longRate8h : null;
-  const rate1h = rate8h !== null ? rate8h / 8 : null;
-  const shortFundingRaw = readOptionalNumber(raw, ['short_funding_rate_raw', 'shortFundingRateRaw']);
-  const longFundingRaw = readOptionalNumber(raw, ['long_funding_rate_raw', 'longFundingRateRaw']);
-  const nextFundingRate = shortFundingRaw !== null && longFundingRaw !== null ? shortFundingRaw - longFundingRaw : null;
-
-  return {
-    id: `opportunity-${longExchange}-${shortExchange}-${readString(raw, ['symbol'])}`,
-    exchange: `${longExchange}/${shortExchange}`,
-    symbol: readString(raw, ['symbol'], '-'),
-    openInterestUsd: 0,
-    volume24hUsd: 0,
-    fundingRate1h: rate1h,
-    fundingRate8h: rate8h,
-    fundingRate1y: spreadNominal,
-    nextFundingTime: longNextFundingTime || shortNextFundingTime,
-    nextFundingRate,
-    settlementInterval: '8h',
-    maxLeverage: maxUsable,
-    nominalApr: spreadNominal,
-    leveragedNominalApr: leveragedSpread,
-    source: 'opportunity',
-    longExchange,
-    shortExchange,
-    spreadRate1yNominal: spreadNominal,
-    spreadRate1h: rate1h,
-    spreadRate8h: rate8h,
-    longMaxLeverage,
-    shortMaxLeverage,
-    maxUsableLeverage: maxUsable,
-    longRate8h,
-    shortRate8h,
-    longFundingRateRaw: longFundingRaw,
-    shortFundingRateRaw: shortFundingRaw,
-    longNextFundingTime,
-    shortNextFundingTime
-  };
-}
-
-function normalizeErrors(payload: unknown): MarketFetchError[] {
-  const root = asObject(payload);
-  const list = Array.isArray(root.errors) ? root.errors : [];
-  return list
-    .filter((item): item is GenericObject => typeof item === 'object' && item !== null)
-    .map((item) => ({
-      exchange: readString(item, ['exchange'], ''),
-      message: readString(item, ['message'], '未知错误')
-    }))
-    .filter((item) => item.exchange || item.message);
-}
-
-function normalizeMeta(payload: unknown): MarketMeta | null {
-  const root = asObject(payload);
-  const metaRaw = root.meta;
-  if (typeof metaRaw !== 'object' || metaRaw === null) {
-    return null;
-  }
-  const meta = metaRaw as GenericObject;
-  const fetchMsRaw = readOptionalNumber(meta, ['fetch_ms', 'fetchMs']);
-  const exchangesOk = Array.isArray(meta.exchanges_ok) ? meta.exchanges_ok : [];
-  const exchangesFailed = Array.isArray(meta.exchanges_failed) ? meta.exchanges_failed : [];
-  const exchangeSources = readStringRecord(meta.exchange_sources ?? meta.exchangeSources);
-  const exchangeCounts = readNumberRecord(meta.exchange_counts ?? meta.exchangeCounts);
-  return {
-    fetchMs: fetchMsRaw,
-    cacheHit: Boolean(meta.cache_hit ?? meta.cacheHit),
-    exchangesOk: exchangesOk.filter((item): item is string => typeof item === 'string' && item.length > 0),
-    exchangesFailed: exchangesFailed.filter((item): item is string => typeof item === 'string' && item.length > 0),
-    exchangeSources,
-    exchangeCounts
-  };
-}
-
-export async function fetchSnapshots(options?: { forceRefresh?: boolean }): Promise<SnapshotResult> {
-  const query = options?.forceRefresh ? '?force_refresh=1' : '';
-  const payload = await request<unknown>(`/api/market/snapshots${query}`);
-  return {
-    rows: normalizeList(payload).map(buildSnapshotRow),
-    errors: normalizeErrors(payload),
-    meta: normalizeMeta(payload)
-  };
-}
-
-export async function fetchOpportunities(options?: { forceRefresh?: boolean }): Promise<MarketRow[]> {
-  const query = options?.forceRefresh ? '?force_refresh=1' : '';
-  const payload = await request<unknown>(`/api/opportunities${query}`);
-  return normalizeList(payload).map(buildOpportunityRow);
 }
 
 export async function fetchPositions(): Promise<TradingRecord[]> {

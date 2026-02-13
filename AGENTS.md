@@ -113,3 +113,8 @@
   - Why：彻底消除“点击后自动跳转中转页且只打开一个交易所”的主流程干扰，让行为可预测。
   - Impact：`frontend/src/utils/exchangeLinks.ts`，`frontend/src/utils/popupOpen.ts`，`frontend/src/pages/MarketPage.vue`，`frontend/src/components/MarketTable.vue`，`frontend/src/components/MarketCardList.vue`，`frontend/src/pages/TradeRedirectPage.vue`，`frontend/src/App.vue`，`frontend/package.json`，`frontend/src/utils/exchangeLinks.test.ts`，`frontend/src/utils/popupOpen.test.ts`
   - Verify：`cd frontend && npm run test`，`cd frontend && npm run build`，手动点击币对验证不再自动跳转 `/trade/redirect` 且拦截时出现权限提示。
+
+- **[2026-02-13] 扫描页改为 board 聚合接口 + 查询缓存 + 虚拟滚动**：前端主入口重构为 `/scanner` 与 `/scanner/:symbol/:long/:short`，数据改走 `/api/market/board`；桌面端使用虚拟列表，移动端使用分页卡片；后端新增 `symbol` 过滤并补齐 board 行 `id` 与腿部 `exchange` 字段。
+  - Why：降低前端二次拼装和全量渲染开销，解决中大数据量下卡顿。
+  - Impact：`backend/app/api/market.py`，`backend/app/services/market_board.py`，`backend/app/models/schemas.py`，`backend/tests/test_market_board.py`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/pages/PairDetailPage.vue`，`frontend/src/components/ScannerTableVirtual.vue`，`frontend/src/components/ScannerMobileCards.vue`，`frontend/src/components/ScannerToolbar.vue`，`frontend/src/composables/useScannerQuery.ts`，`frontend/src/api/market.ts`，`frontend/src/router.ts`，`frontend/src/main.ts`
+  - Verify：`cd backend && pytest -q`；`cd frontend && npm run test`；`cd frontend && npm run build`

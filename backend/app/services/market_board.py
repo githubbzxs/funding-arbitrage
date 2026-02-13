@@ -1,20 +1,12 @@
 from collections.abc import Iterable
 from typing import Any
 
-from app.models.schemas import (
-    MarketBoardResponse,
-    MarketSnapshot,
-    OpportunityBoardLeg,
-    OpportunityBoardRow,
-    SupportedExchange,
-)
+from app.models.schemas import MarketBoardResponse, MarketSnapshot, OpportunityBoardLeg, OpportunityBoardRow, SupportedExchange
 from app.services.arbitrage import scan_opportunities
 from app.services.market_data import MarketDataService
 
 
-def _build_snapshot_index(
-    snapshots: list[MarketSnapshot],
-) -> dict[tuple[str, SupportedExchange], MarketSnapshot]:
+def _build_snapshot_index(snapshots: list[MarketSnapshot]) -> dict[tuple[str, SupportedExchange], MarketSnapshot]:
     """基于 symbol + exchange 建立快照索引，便于机会结果回查双腿详情。"""
 
     index: dict[tuple[str, SupportedExchange], MarketSnapshot] = {}
@@ -23,8 +15,17 @@ def _build_snapshot_index(
     return index
 
 
+def _format_interval(hours: float | None) -> str:
+    if hours is None or hours <= 0:
+        return "-"
+    if float(hours).is_integer():
+        return f"{int(hours)}h"
+    return f"{hours}h"
+
+
 def _to_board_leg(snapshot: MarketSnapshot) -> OpportunityBoardLeg:
     return OpportunityBoardLeg(
+        exchange=snapshot.exchange,
         funding_rate_raw=snapshot.funding_rate_raw,
         rate_1h=snapshot.rate_1h,
         rate_8h=snapshot.rate_8h,
@@ -34,7 +35,7 @@ def _to_board_leg(snapshot: MarketSnapshot) -> OpportunityBoardLeg:
         leveraged_nominal_rate_1y=snapshot.leveraged_nominal_rate_1y,
         open_interest_usd=snapshot.oi_usd,
         volume24h_usd=snapshot.vol24h_usd,
-        settlement_interval=snapshot.funding_interval_hours,
+        settlement_interval=_format_interval(snapshot.funding_interval_hours),
     )
 
 
@@ -57,12 +58,14 @@ def build_board_rows_from_snapshots(
     limit: int = 500,
     min_spread_rate_1y_nominal: float = 0.0,
     exchanges: Iterable[SupportedExchange] | None = None,
+    symbol: str | None = None,
 ) -> list[OpportunityBoardRow]:
-    """将市场快照转换成前端可直渲染的 board 行。"""
+    """将市场快照转换成前端可直接渲染的 board 行。"""
 
     if limit <= 0:
         return []
 
+    symbol_filter = symbol.upper().strip() if symbol else ""
     snapshot_index = _build_snapshot_index(snapshots)
     exchange_filter = set(exchanges) if exchanges else None
     opportunities = scan_opportunities(
@@ -72,6 +75,8 @@ def build_board_rows_from_snapshots(
 
     rows: list[OpportunityBoardRow] = []
     for item in opportunities:
+        if symbol_filter and item.symbol != symbol_filter:
+            continue
         if exchange_filter and item.long_exchange not in exchange_filter and item.short_exchange not in exchange_filter:
             continue
 
@@ -82,6 +87,7 @@ def build_board_rows_from_snapshots(
 
         rows.append(
             OpportunityBoardRow(
+                id=f"{item.symbol}-{item.long_exchange}-{item.short_exchange}",
                 symbol=item.symbol,
                 long_exchange=item.long_exchange,
                 short_exchange=item.short_exchange,
@@ -106,6 +112,7 @@ async def build_market_board_response(
     min_spread_rate_1y_nominal: float = 0.0,
     force_refresh: bool = False,
     exchanges: Iterable[SupportedExchange] | None = None,
+    symbol: str | None = None,
 ) -> MarketBoardResponse:
     """生成 /api/market/board 聚合响应。"""
 
@@ -116,6 +123,7 @@ async def build_market_board_response(
         limit=limit,
         min_spread_rate_1y_nominal=min_spread_rate_1y_nominal,
         exchanges=exchange_filter,
+        symbol=symbol,
     )
 
     meta: dict[str, Any] = dict(snapshots_response.meta or {})
@@ -124,6 +132,8 @@ async def build_market_board_response(
     meta["board_min_spread_rate_1y_nominal"] = min_spread_rate_1y_nominal
     if exchange_filter:
         meta["board_exchanges_filter"] = sorted(exchange_filter)
+    if symbol and symbol.strip():
+        meta["board_symbol_filter"] = symbol.upper().strip()
 
     return MarketBoardResponse(
         as_of=snapshots_response.as_of,

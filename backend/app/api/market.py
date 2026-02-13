@@ -23,8 +23,9 @@ async def get_market_board(
     min_spread_rate_1y_nominal: float = Query(default=0.0),
     force_refresh: bool = Query(default=False, description="是否跳过缓存强制刷新"),
     exchanges: list[SupportedExchange] | None = Query(default=None, description="交易所过滤，可多选"),
+    symbol: str | None = Query(default=None, description="币对过滤，例如 BTCUSDT"),
 ) -> MarketBoardResponse:
-    """获取前端可直渲染的套利看板聚合数据。"""
+    """获取前端可直接渲染的套利看板数据。"""
 
     return await build_market_board_response(
         market_data_service=market_data_service,
@@ -32,4 +33,5 @@ async def get_market_board(
         min_spread_rate_1y_nominal=min_spread_rate_1y_nominal,
         force_refresh=force_refresh,
         exchanges=exchanges,
+        symbol=symbol,
     )

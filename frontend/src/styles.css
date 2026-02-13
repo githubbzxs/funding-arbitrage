@@ -1,18 +1,16 @@
 :root {
-  font-family: "JetBrains Mono", "Consolas", "Menlo", "Monaco", "Microsoft YaHei", monospace;
-  color-scheme: dark;
+  font-family: 'JetBrains Mono', 'Consolas', 'Menlo', 'Monaco', 'Microsoft YaHei', monospace;
   --bg-main: #04080f;
-  --bg-gradient: radial-gradient(circle at 20% 0%, #101c2d 0%, #04080f 42%, #04080f 100%);
-  --panel-bg: #0b121c;
-  --control-bg: #111927;
-  --line-soft: #1d2935;
-  --line-strong: #2a3949;
-  --text-main: #dce5ef;
-  --text-dim: #92a5ba;
+  --bg-gradient: radial-gradient(circle at 18% -10%, #17283d 0%, #07101a 35%, #04080f 70%);
+  --panel-bg: #0b131f;
+  --line-soft: #1f2d3e;
+  --line-strong: #2b3d51;
+  --text-main: #dce7f4;
+  --text-dim: #94a9c3;
   --accent: #00c7a6;
-  --accent-soft: #5ee8d1;
-  --success: #33d2a5;
-  --danger: #ff7878;
+  --accent-soft: #70f0db;
+  --success: #35d2a6;
+  --danger: #ff8a8a;
 }
 
 *,
@@ -45,19 +43,18 @@ body {
 .top-header {
   border: 1px solid var(--line-strong);
   background: var(--panel-bg);
-  min-height: 62px;
+  min-height: 68px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
 }
 
 .title-group h1 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.6px;
+  font-size: 19px;
+  letter-spacing: 0.3px;
 }
 
 .title-group p {
@@ -68,26 +65,27 @@ body {
 
 .top-nav {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
 }
 
 .nav-link {
-  text-decoration: none;
   border: 1px solid var(--line-soft);
-  background: #111822;
+  background: #111a27;
   color: var(--text-dim);
-  height: 30px;
+  text-decoration: none;
+  height: 32px;
   padding: 0 12px;
-  border-radius: 2px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
+  font-size: 12px;
 }
 
 .nav-link.active {
   border-color: var(--accent);
   color: var(--accent-soft);
+  background: rgba(0, 199, 166, 0.12);
 }
 
 .page-shell {
@@ -95,19 +93,10 @@ body {
   gap: 10px;
 }
 
-.error-tip {
-  margin: 0;
-  border: 1px solid rgba(255, 120, 120, 0.4);
-  background: rgba(255, 120, 120, 0.08);
-  color: #ff9a9a;
-  padding: 8px 10px;
-  font-size: 12px;
-}
-
 @media (max-width: 1024px) {
   .top-header {
-    align-items: flex-start;
     flex-direction: column;
+    align-items: flex-start;
   }
 }
 

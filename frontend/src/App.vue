@@ -5,22 +5,25 @@ import { RouterLink, RouterView, useRoute } from 'vue-router';
 const route = useRoute();
 
 const navItems = [
-  { label: '行情机会', to: '/' },
+  { label: '扫描看板', to: '/scanner' },
   { label: '交易执行', to: '/trade' },
-  { label: 'API 配置', to: '/settings/api' }
+  { label: 'API设置', to: '/settings/api' }
 ];
 
 const pageHint = computed(() => {
-  if (route.path.startsWith('/trade/redirect')) {
-    return '手动跳转工具（备用）';
+  if (route.path.startsWith('/scanner/')) {
+    return '机会详情与交易入口';
+  }
+  if (route.path.startsWith('/scanner')) {
+    return '跨交易所资金费率机会扫描';
   }
   if (route.path.startsWith('/trade')) {
-    return '交易执行与风控动作';
+    return '下单执行与风险控制';
   }
   if (route.path.startsWith('/settings/api')) {
-    return '后端托管 API 凭据配置';
+    return '后端托管 API 凭据管理';
   }
-  return '跨交易所资金费率套利监控';
+  return 'Funding Arbitrage Terminal';
 });
 </script>
 
@@ -38,7 +41,7 @@ const pageHint = computed(() => {
           :key="item.to"
           :to="item.to"
           class="nav-link"
-          :class="{ active: route.path === item.to }"
+          :class="{ active: route.path === item.to || route.path.startsWith(`${item.to}/`) }"
         >
           {{ item.label }}
         </RouterLink>

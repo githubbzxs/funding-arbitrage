@@ -83,6 +83,7 @@ class OpportunitiesResponse(BaseModel):
 class OpportunityBoardLeg(BaseModel):
     """board 表格中的单腿数据。"""
 
+    exchange: SupportedExchange
     funding_rate_raw: float | None = None
     rate_1h: float | None = None
     rate_8h: float | None = None
@@ -92,12 +93,13 @@ class OpportunityBoardLeg(BaseModel):
     leveraged_nominal_rate_1y: float | None = None
     open_interest_usd: float | None = None
     volume24h_usd: float | None = None
-    settlement_interval: float | None = None
+    settlement_interval: str = "-"
 
 
 class OpportunityBoardRow(BaseModel):
     """board 表格单行数据。"""
 
+    id: str
     symbol: str
     long_exchange: SupportedExchange
     short_exchange: SupportedExchange

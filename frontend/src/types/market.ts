@@ -1,54 +1,6 @@
-export interface MarketRow {
-  id: string;
-  exchange: string;
-  symbol: string;
-  openInterestUsd: number;
-  volume24hUsd: number;
-  fundingRate1h: number | null;
-  fundingRate8h: number | null;
-  fundingRate1y: number | null;
-  nextFundingTime: string;
-  nextFundingRate: number | null;
-  settlementInterval: string;
-  maxLeverage: number | null;
-  nominalApr: number | null;
-  leveragedNominalApr: number | null;
-  source: 'snapshot' | 'opportunity' | 'merged';
-  longExchange?: string;
-  shortExchange?: string;
-  spreadRate1yNominal?: number;
-  spreadRate8h?: number | null;
-  spreadRate1h?: number | null;
-  longMaxLeverage?: number | null;
-  shortMaxLeverage?: number | null;
-  maxUsableLeverage?: number | null;
-  longRate8h?: number | null;
-  shortRate8h?: number | null;
-  longFundingRateRaw?: number | null;
-  shortFundingRateRaw?: number | null;
-  longNextFundingTime?: string;
-  shortNextFundingTime?: string;
-}
+export type SupportedExchange = 'binance' | 'okx' | 'bybit' | 'bitget' | 'gateio';
 
-export interface FilterState {
-  exchanges: string[];
-}
-
-export interface MarketFetchError {
-  exchange: string;
-  message: string;
-}
-
-export interface MarketMeta {
-  fetchMs: number | null;
-  cacheHit: boolean;
-  exchangesOk: string[];
-  exchangesFailed: string[];
-  exchangeSources: Record<string, string>;
-  exchangeCounts: Record<string, number>;
-}
-
-export interface OpportunityLegInfo {
+export interface OpportunityBoardLeg {
   exchange: string;
   openInterestUsd: number | null;
   volume24hUsd: number | null;
@@ -59,21 +11,51 @@ export interface OpportunityLegInfo {
   nextFundingTime: string;
   settlementInterval: string;
   maxLeverage: number | null;
-  leveragedNominalApr: number | null;
+  leveragedNominalRate1y: number | null;
 }
 
-export interface OpportunityPairRow {
+export interface OpportunityBoardRow {
   id: string;
   symbol: string;
   longExchange: string;
   shortExchange: string;
-  longLeg: OpportunityLegInfo;
-  shortLeg: OpportunityLegInfo;
+  longLeg: OpportunityBoardLeg;
+  shortLeg: OpportunityBoardLeg;
   spreadRate1h: number | null;
   spreadRate8h: number | null;
   spreadRate1yNominal: number;
   leveragedSpreadRate1yNominal: number | null;
-  rawOpportunity: MarketRow;
+  maxUsableLeverage: number | null;
+}
+
+export interface MarketFetchError {
+  exchange: string;
+  message: string;
+}
+
+export interface BoardMeta {
+  fetchMs: number | null;
+  cacheHit: boolean;
+  exchangesOk: string[];
+  exchangesFailed: string[];
+  exchangeSources: Record<string, string>;
+  exchangeCounts: Record<string, number>;
+}
+
+export interface MarketBoardResult {
+  asOf: string;
+  total: number;
+  rows: OpportunityBoardRow[];
+  errors: MarketFetchError[];
+  meta: BoardMeta | null;
+}
+
+export interface BoardQuery {
+  limit?: number;
+  minSpreadRate1yNominal?: number;
+  forceRefresh?: boolean;
+  exchanges?: string[];
+  symbol?: string;
 }
 
 export type ExecutionAction = 'preview' | 'open' | 'close' | 'hedge' | 'emergency-close';
