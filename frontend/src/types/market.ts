@@ -10,6 +10,7 @@ export interface OpportunityBoardLeg {
   fundingRate1y: number | null;
   nextFundingTime: string;
   settlementInterval: string;
+  settlementIntervalHours: number | null;
   maxLeverage: number | null;
   leveragedNominalRate1y: number | null;
 }
@@ -21,11 +22,30 @@ export interface OpportunityBoardRow {
   shortExchange: string;
   longLeg: OpportunityBoardLeg;
   shortLeg: OpportunityBoardLeg;
+  intervalMismatch: boolean;
+  shorterIntervalSide: 'long' | 'short' | null;
   spreadRate1h: number | null;
   spreadRate8h: number | null;
   spreadRate1yNominal: number;
   leveragedSpreadRate1yNominal: number | null;
   maxUsableLeverage: number | null;
+}
+
+export interface MarginSimulation {
+  marginUsd: number;
+  leverage: number;
+  notionalUsd: number;
+  horizonHours: number;
+  longIntervalHours: number;
+  shortIntervalHours: number;
+  longEvents: number;
+  shortEvents: number;
+  hedgedRate: number;
+  singleSideRate: number;
+  totalRate: number;
+  expectedPnlUsd: number;
+  intervalMismatch: boolean;
+  shorterIntervalSide: 'long' | 'short' | null;
 }
 
 export interface MarketFetchError {

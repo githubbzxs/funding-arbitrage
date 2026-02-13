@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Literal
 
 from app.models.schemas import MarketBoardResponse, MarketSnapshot, OpportunityBoardLeg, OpportunityBoardRow, SupportedExchange
 from app.services.arbitrage import scan_opportunities
@@ -36,6 +36,7 @@ def _to_board_leg(snapshot: MarketSnapshot) -> OpportunityBoardLeg:
         open_interest_usd=snapshot.oi_usd,
         volume24h_usd=snapshot.vol24h_usd,
         settlement_interval=_format_interval(snapshot.funding_interval_hours),
+        settlement_interval_hours=snapshot.funding_interval_hours,
     )
 
 
@@ -43,6 +44,39 @@ def _calc_spread(short_rate: float | None, long_rate: float | None) -> float | N
     if short_rate is None or long_rate is None:
         return None
     return short_rate - long_rate
+
+
+def _matches_exchange_filter(
+    long_exchange: SupportedExchange,
+    short_exchange: SupportedExchange,
+    exchange_filter: set[SupportedExchange] | None,
+) -> bool:
+    """交易所筛选策略：单选按包含，多选按双腿都在选中集合。"""
+
+    if not exchange_filter:
+        return True
+    if len(exchange_filter) == 1:
+        return long_exchange in exchange_filter or short_exchange in exchange_filter
+    return long_exchange in exchange_filter and short_exchange in exchange_filter
+
+
+def _resolve_interval_relation(
+    long_interval_hours: float | None,
+    short_interval_hours: float | None,
+) -> tuple[bool, Literal["long", "short"] | None]:
+    """返回是否间隔不一致，以及短间隔侧。"""
+
+    if long_interval_hours is None or short_interval_hours is None:
+        return False, None
+    if long_interval_hours <= 0 or short_interval_hours <= 0:
+        return False, None
+
+    diff = long_interval_hours - short_interval_hours
+    if abs(diff) < 1e-9:
+        return False, None
+    if diff < 0:
+        return True, "long"
+    return True, "short"
 
 
 def _board_sort_key(row: OpportunityBoardRow) -> tuple[int, float, float]:
@@ -77,13 +111,18 @@ def build_board_rows_from_snapshots(
     for item in opportunities:
         if symbol_filter and item.symbol != symbol_filter:
             continue
-        if exchange_filter and item.long_exchange not in exchange_filter and item.short_exchange not in exchange_filter:
+        if not _matches_exchange_filter(item.long_exchange, item.short_exchange, exchange_filter):
             continue
 
         long_snapshot = snapshot_index.get((item.symbol, item.long_exchange))
         short_snapshot = snapshot_index.get((item.symbol, item.short_exchange))
         if long_snapshot is None or short_snapshot is None:
             continue
+
+        interval_mismatch, shorter_interval_side = _resolve_interval_relation(
+            long_snapshot.funding_interval_hours,
+            short_snapshot.funding_interval_hours,
+        )
 
         rows.append(
             OpportunityBoardRow(
@@ -93,6 +132,8 @@ def build_board_rows_from_snapshots(
                 short_exchange=item.short_exchange,
                 long_leg=_to_board_leg(long_snapshot),
                 short_leg=_to_board_leg(short_snapshot),
+                interval_mismatch=interval_mismatch,
+                shorter_interval_side=shorter_interval_side,
                 spread_rate_1h=_calc_spread(short_snapshot.rate_1h, long_snapshot.rate_1h),
                 spread_rate_8h=_calc_spread(short_snapshot.rate_8h, long_snapshot.rate_8h),
                 spread_rate_1y_nominal=item.spread_rate_1y_nominal,
@@ -132,6 +173,7 @@ async def build_market_board_response(
     meta["board_min_spread_rate_1y_nominal"] = min_spread_rate_1y_nominal
     if exchange_filter:
         meta["board_exchanges_filter"] = sorted(exchange_filter)
+        meta["board_exchanges_filter_mode"] = "single_include_or_multi_both"
     if symbol and symbol.strip():
         meta["board_symbol_filter"] = symbol.upper().strip()
 

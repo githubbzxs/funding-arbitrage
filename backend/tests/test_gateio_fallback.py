@@ -31,3 +31,34 @@ async def test_provider_uses_legacy_fallback_when_ccxt_empty(
     assert source == "legacy_rest"
     assert len(snapshots) == 1
     assert snapshots[0].exchange == exchange
+
+
+@pytest.mark.asyncio
+async def test_provider_uses_ws_fallback_when_rest_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = CcxtMarketProvider("gateio")
+    ws_snapshot = MarketSnapshot(
+        exchange="gateio",
+        symbol="ETHUSDT",
+        funding_rate_raw=0.0002,
+        funding_interval_hours=8,
+    )
+
+    async def fake_fetch_ccxt_snapshots() -> list[MarketSnapshot]:
+        return []
+
+    async def fake_fetch_rest_fallback() -> list[MarketSnapshot]:
+        raise RuntimeError("rest failed")
+
+    async def fake_fetch_ws_fallback() -> list[MarketSnapshot]:
+        return [ws_snapshot]
+
+    monkeypatch.setattr(provider, "_fetch_ccxt_snapshots", fake_fetch_ccxt_snapshots)
+    monkeypatch.setattr(provider, "_fetch_rest_fallback", fake_fetch_rest_fallback)
+    monkeypatch.setattr(provider, "_fetch_ws_fallback", fake_fetch_ws_fallback)
+
+    snapshots, source = await provider.fetch_snapshots_with_source()
+    assert source == "ws_fallback"
+    assert len(snapshots) == 1
+    assert snapshots[0].exchange == "gateio"

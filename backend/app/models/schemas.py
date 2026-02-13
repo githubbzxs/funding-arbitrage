@@ -94,6 +94,7 @@ class OpportunityBoardLeg(BaseModel):
     open_interest_usd: float | None = None
     volume24h_usd: float | None = None
     settlement_interval: str = "-"
+    settlement_interval_hours: float | None = None
 
 
 class OpportunityBoardRow(BaseModel):
@@ -105,6 +106,8 @@ class OpportunityBoardRow(BaseModel):
     short_exchange: SupportedExchange
     long_leg: OpportunityBoardLeg
     short_leg: OpportunityBoardLeg
+    interval_mismatch: bool = False
+    shorter_interval_side: Literal["long", "short"] | None = None
     spread_rate_1h: float | None = None
     spread_rate_8h: float | None = None
     spread_rate_1y_nominal: float

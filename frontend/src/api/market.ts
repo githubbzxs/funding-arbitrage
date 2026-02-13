@@ -21,6 +21,31 @@ function readString(record: GenericObject, keys: string[], fallback = ''): strin
   return fallback;
 }
 
+function readBoolean(record: GenericObject, keys: string[], fallback = false): boolean {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) {
+        continue;
+      }
+      if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+        return true;
+      }
+      if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+        return false;
+      }
+    }
+  }
+  return fallback;
+}
+
 function readNumber(record: GenericObject, keys: string[], fallback = Number.NaN): number {
   for (const key of keys) {
     if (!(key in record)) {
@@ -79,10 +104,19 @@ function readStringList(input: unknown): string[] {
   return input.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim());
 }
 
+function formatIntervalHours(hours: number): string {
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return '-';
+  }
+  if (Math.abs(hours - Math.round(hours)) < 1e-9) {
+    return `${Math.round(hours)}h`;
+  }
+  return `${hours.toFixed(2).replace(/\.?0+$/, '')}h`;
+}
+
 function toLeg(raw: GenericObject): OpportunityBoardLeg {
-  const intervalRaw = readOptionalNumber(raw, ['settlement_interval', 'settlementInterval']);
-  const intervalText =
-    intervalRaw !== null && Number.isFinite(intervalRaw) && intervalRaw > 0 ? `${intervalRaw}h` : readString(raw, ['settlement_interval', 'settlementInterval'], '-');
+  const intervalHours = readOptionalNumber(raw, ['settlement_interval_hours', 'settlementIntervalHours', 'funding_interval_hours', 'fundingIntervalHours']);
+  const intervalText = intervalHours !== null ? formatIntervalHours(intervalHours) : readString(raw, ['settlement_interval', 'settlementInterval'], '-');
   return {
     exchange: readString(raw, ['exchange'], '-'),
     openInterestUsd: readOptionalNumber(raw, ['open_interest_usd', 'openInterestUsd']),
@@ -93,6 +127,7 @@ function toLeg(raw: GenericObject): OpportunityBoardLeg {
     fundingRate1y: readOptionalNumber(raw, ['rate_1y', 'rate1y']),
     nextFundingTime: readString(raw, ['next_funding_time', 'nextFundingTime']),
     settlementInterval: intervalText,
+    settlementIntervalHours: intervalHours,
     maxLeverage: readOptionalNumber(raw, ['max_leverage', 'maxLeverage']),
     leveragedNominalRate1y: readOptionalNumber(raw, ['leveraged_nominal_rate_1y', 'leveragedNominalRate1y'])
   };
@@ -110,6 +145,8 @@ function toRow(raw: GenericObject): OpportunityBoardRow {
     shortLeg.exchange = shortExchange || '-';
   }
   const spreadRate1yNominal = readNumber(raw, ['spread_rate_1y_nominal', 'spreadRate1yNominal'], 0);
+  const shorterIntervalSideRaw = readString(raw, ['shorter_interval_side', 'shorterIntervalSide']);
+  const shorterIntervalSide = shorterIntervalSideRaw === 'long' || shorterIntervalSideRaw === 'short' ? shorterIntervalSideRaw : null;
   return {
     id: readString(raw, ['id'], `${readString(raw, ['symbol'], '-')}-${longExchange || longLeg.exchange}-${shortExchange || shortLeg.exchange}`),
     symbol: readString(raw, ['symbol'], '-'),
@@ -117,6 +154,8 @@ function toRow(raw: GenericObject): OpportunityBoardRow {
     shortExchange: shortExchange || shortLeg.exchange,
     longLeg,
     shortLeg,
+    intervalMismatch: readBoolean(raw, ['interval_mismatch', 'intervalMismatch']),
+    shorterIntervalSide,
     spreadRate1h: readOptionalNumber(raw, ['spread_rate_1h', 'spreadRate1h']),
     spreadRate8h: readOptionalNumber(raw, ['spread_rate_8h', 'spreadRate8h']),
     spreadRate1yNominal,

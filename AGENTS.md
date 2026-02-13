@@ -118,3 +118,8 @@
   - Why：降低前端二次拼装和全量渲染开销，解决中大数据量下卡顿。
   - Impact：`backend/app/api/market.py`，`backend/app/services/market_board.py`，`backend/app/models/schemas.py`，`backend/tests/test_market_board.py`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/pages/PairDetailPage.vue`，`frontend/src/components/ScannerTableVirtual.vue`，`frontend/src/components/ScannerMobileCards.vue`，`frontend/src/components/ScannerToolbar.vue`，`frontend/src/composables/useScannerQuery.ts`，`frontend/src/api/market.ts`，`frontend/src/router.ts`，`frontend/src/main.ts`
   - Verify：`cd backend && pytest -q`；`cd frontend && npm run test`；`cd frontend && npm run build`
+
+- **[2026-02-13] 扫描页补齐交易所筛选修复 + Gate.io WS兜底 + 间隔差异收益模拟**：后端 board 筛选改为“单选包含、多选双腿都命中”；Gate.io 抓取链路升级为 `ccxt -> REST -> WS -> stale`；前端新增“保证金模拟(24h)”并按“同间隔正常算、异间隔拆分短间隔单边”展示预估收益。
+  - Why：修复筛选体验与 Gate.io 间歇缺失，且把不同收费间隔下的真实收益结构直观展示出来。
+  - Impact：`backend/app/exchanges/providers/ccxt_market.py`，`backend/app/services/market_board.py`，`backend/app/models/schemas.py`，`backend/tests/test_gateio_fallback.py`，`backend/tests/test_market_board.py`，`frontend/src/api/market.ts`，`frontend/src/types/market.ts`，`frontend/src/utils/marginSim.ts`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/components/ScannerTableVirtual.vue`，`frontend/src/components/ScannerMobileCards.vue`
+  - Verify：`cd backend && pytest -q`，`cd frontend && npm run test`，`cd frontend && npm run build`
