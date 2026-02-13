@@ -7,7 +7,9 @@ def convert_funding_rate(
     funding_interval_hours: float | None,
 ) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
     """
-    资金费率换算：
+    资金费率换算。
+
+    返回：
     - rate_1h：按小时折算
     - rate_8h：按 8 小时折算
     - rate_1y：按小时复利折算年化
@@ -27,4 +29,3 @@ def convert_funding_rate(
         rate_1y = None
 
     return rate_1h, rate_8h, rate_1y, nominal_rate_1y
-
