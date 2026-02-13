@@ -1,8 +1,14 @@
-import type { MarketRow, TradingRecord } from '../types/market';
+import type { MarketFetchError, MarketMeta, MarketRow, TradingRecord } from '../types/market';
 import { toNumber } from '../utils/format';
 import { request } from './http';
 
 type GenericObject = Record<string, unknown>;
+
+export type SnapshotResult = {
+  rows: MarketRow[];
+  errors: MarketFetchError[];
+  meta: MarketMeta | null;
+};
 
 function readString(record: GenericObject, keys: string[], fallback = ''): string {
   for (const key of keys) {
@@ -57,6 +63,13 @@ function normalizeList(data: unknown): GenericObject[] {
   }
 
   return [];
+}
+
+function asObject(data: unknown): GenericObject {
+  if (typeof data === 'object' && data !== null) {
+    return data as GenericObject;
+  }
+  return {};
 }
 
 function hourLabel(hours: number): string {
@@ -166,9 +179,43 @@ function buildOpportunityRow(raw: GenericObject): MarketRow {
   };
 }
 
-export async function fetchSnapshots(): Promise<MarketRow[]> {
+function normalizeErrors(payload: unknown): MarketFetchError[] {
+  const root = asObject(payload);
+  const list = Array.isArray(root.errors) ? root.errors : [];
+  return list
+    .filter((item): item is GenericObject => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      exchange: readString(item, ['exchange'], ''),
+      message: readString(item, ['message'], '未知错误')
+    }))
+    .filter((item) => item.exchange || item.message);
+}
+
+function normalizeMeta(payload: unknown): MarketMeta | null {
+  const root = asObject(payload);
+  const metaRaw = root.meta;
+  if (typeof metaRaw !== 'object' || metaRaw === null) {
+    return null;
+  }
+  const meta = metaRaw as GenericObject;
+  const fetchMsRaw = readOptionalNumber(meta, ['fetch_ms', 'fetchMs']);
+  const exchangesOk = Array.isArray(meta.exchanges_ok) ? meta.exchanges_ok : [];
+  const exchangesFailed = Array.isArray(meta.exchanges_failed) ? meta.exchanges_failed : [];
+  return {
+    fetchMs: fetchMsRaw,
+    cacheHit: Boolean(meta.cache_hit ?? meta.cacheHit),
+    exchangesOk: exchangesOk.filter((item): item is string => typeof item === 'string' && item.length > 0),
+    exchangesFailed: exchangesFailed.filter((item): item is string => typeof item === 'string' && item.length > 0)
+  };
+}
+
+export async function fetchSnapshots(): Promise<SnapshotResult> {
   const payload = await request<unknown>('/api/market/snapshots');
-  return normalizeList(payload).map(buildSnapshotRow);
+  return {
+    rows: normalizeList(payload).map(buildSnapshotRow),
+    errors: normalizeErrors(payload),
+    meta: normalizeMeta(payload)
+  };
 }
 
 export async function fetchOpportunities(): Promise<MarketRow[]> {

@@ -38,7 +38,6 @@ body {
 .app-shell {
   min-height: 100vh;
   padding: 12px;
-  padding-bottom: 56px;
   display: grid;
   gap: 10px;
 }
@@ -67,38 +66,33 @@ body {
   font-size: 12px;
 }
 
-.header-actions {
-  display: flex;
+.top-nav {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
-.status {
+.nav-link {
+  text-decoration: none;
   border: 1px solid var(--line-soft);
+  background: #111822;
   color: var(--text-dim);
-  padding: 4px 8px;
+  height: 30px;
+  padding: 0 12px;
   border-radius: 2px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
 }
 
-.status.running {
-  border-color: rgba(0, 199, 166, 0.75);
+.nav-link.active {
+  border-color: var(--accent);
   color: var(--accent-soft);
 }
 
-.start-trade {
-  height: 32px;
-  border: 1px solid rgba(0, 199, 166, 0.8);
-  background: rgba(0, 199, 166, 0.92);
-  color: #022018;
-  border-radius: 2px;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 0 14px;
-}
-
-.start-trade:hover {
-  background: rgba(0, 199, 166, 1);
+.page-shell {
+  display: grid;
+  gap: 10px;
 }
 
 .error-tip {
@@ -108,19 +102,6 @@ body {
   color: #ff9a9a;
   padding: 8px 10px;
   font-size: 12px;
-}
-
-.trade-loading {
-  position: fixed;
-  right: 12px;
-  bottom: 50px;
-  border: 1px solid var(--line-strong);
-  background: rgba(8, 14, 22, 0.95);
-  color: var(--text-dim);
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 2px;
-  z-index: 26;
 }
 
 @media (max-width: 1024px) {
@@ -133,21 +114,9 @@ body {
 @media (max-width: 720px) {
   .app-shell {
     padding: 8px;
-    padding-bottom: 56px;
   }
 
   .title-group h1 {
     font-size: 17px;
-  }
-
-  .header-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .status {
-    max-width: calc(100% - 112px);
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 }

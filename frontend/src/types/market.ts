@@ -31,9 +31,19 @@ export interface MarketRow {
 }
 
 export interface FilterState {
-  oiThreshold: number;
-  volumeThreshold: number;
   exchanges: string[];
+}
+
+export interface MarketFetchError {
+  exchange: string;
+  message: string;
+}
+
+export interface MarketMeta {
+  fetchMs: number | null;
+  cacheHit: boolean;
+  exchangesOk: string[];
+  exchangesFailed: string[];
 }
 
 export interface OpportunityLegInfo {

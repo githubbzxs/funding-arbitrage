@@ -6,6 +6,7 @@ const props = defineProps<{
   modelValue: FilterState;
   exchangeOptions: string[];
   updatedAt: string;
+  statusLine?: string;
 }>();
 
 const emit = defineEmits<{
@@ -14,20 +15,6 @@ const emit = defineEmits<{
 }>();
 
 const modelValue = computed(() => props.modelValue);
-
-const oiThreshold = computed({
-  get: () => props.modelValue.oiThreshold,
-  set: (value: number) => {
-    emit('update:modelValue', { ...props.modelValue, oiThreshold: value });
-  }
-});
-
-const volumeThreshold = computed({
-  get: () => props.modelValue.volumeThreshold,
-  set: (value: number) => {
-    emit('update:modelValue', { ...props.modelValue, volumeThreshold: value });
-  }
-});
 
 function toggleFromList(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -42,42 +29,14 @@ function toggleExchange(exchange: string): void {
 
 function resetFilters(): void {
   emit('update:modelValue', {
-    oiThreshold: 0,
-    volumeThreshold: 0,
     exchanges: []
   });
-}
-
-function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): void {
-  const target = event.target as HTMLInputElement;
-  const value = Number(target.value);
-  if (key === 'oiThreshold') {
-    oiThreshold.value = Number.isFinite(value) ? value : 0;
-    return;
-  }
-  volumeThreshold.value = Number.isFinite(value) ? value : 0;
 }
 </script>
 
 <template>
   <section class="filters-panel">
     <div class="filters-grid">
-      <label class="field">
-        <span>OI 阈值 (USD)</span>
-        <input type="number" min="0" step="10000" :value="oiThreshold" @input="onNumberChange($event, 'oiThreshold')" />
-      </label>
-
-      <label class="field">
-        <span>日成交额阈值 (USD)</span>
-        <input
-          type="number"
-          min="0"
-          step="10000"
-          :value="volumeThreshold"
-          @input="onNumberChange($event, 'volumeThreshold')"
-        />
-      </label>
-
       <div class="field wide">
         <span>交易所筛选</span>
         <div class="chip-list">
@@ -96,7 +55,10 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
     </div>
 
     <div class="filter-actions">
-      <div class="meta">上次刷新：{{ updatedAt || '-' }}</div>
+      <div class="meta">
+        <div>上次刷新：{{ updatedAt || '-' }}</div>
+        <div v-if="statusLine">{{ statusLine }}</div>
+      </div>
       <button type="button" class="ghost" @click="$emit('refresh')">立即刷新</button>
       <button type="button" class="ghost" @click="resetFilters">重置筛选</button>
     </div>
@@ -114,7 +76,7 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
 
 .filters-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -131,20 +93,6 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
 
 .field.wide {
   grid-column: span 1;
-}
-
-.field input {
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line-soft);
-  background: var(--control-bg);
-  color: var(--text-main);
-  border-radius: 2px;
-  outline: none;
-}
-
-.field input:focus {
-  border-color: var(--accent);
 }
 
 .chip-list {
@@ -179,6 +127,8 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
   margin-right: auto;
   color: var(--text-dim);
   font-size: 12px;
+  display: grid;
+  gap: 2px;
 }
 
 .ghost {
@@ -194,25 +144,7 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
   border-color: var(--accent);
 }
 
-@media (max-width: 1024px) {
-  .filters-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .field.wide {
-    grid-column: span 2;
-  }
-}
-
 @media (max-width: 720px) {
-  .filters-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .field.wide {
-    grid-column: span 1;
-  }
-
   .filter-actions {
     flex-wrap: wrap;
   }

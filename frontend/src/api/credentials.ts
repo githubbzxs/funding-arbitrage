@@ -2,6 +2,7 @@ import type { ExchangeCredential } from '../types/market';
 import { request } from './http';
 
 type GenericObject = Record<string, unknown>;
+const CONFIG_CREDENTIALS_PREFIX = '/api/config/credentials';
 
 export type CredentialStatus = {
   exchange: string;
@@ -37,7 +38,7 @@ function readBool(record: GenericObject, key: string): boolean | null {
 }
 
 export async function fetchCredentialStatuses(): Promise<CredentialStatus[]> {
-  const payload = await request<unknown>('/api/credentials');
+  const payload = await request<unknown>(CONFIG_CREDENTIALS_PREFIX);
   return normalizeList(payload).map((raw) => ({
     exchange: readString(raw, 'exchange') ?? '',
     configured: Boolean(raw.configured),
@@ -49,10 +50,9 @@ export async function fetchCredentialStatuses(): Promise<CredentialStatus[]> {
 }
 
 export async function upsertCredential(exchange: string, credential: ExchangeCredential): Promise<unknown> {
-  return request(`/api/credentials/${exchange}`, 'PUT', credential);
+  return request(`${CONFIG_CREDENTIALS_PREFIX}/${exchange}`, 'PUT', credential);
 }
 
 export async function deleteCredential(exchange: string): Promise<unknown> {
-  return request(`/api/credentials/${exchange}`, 'DELETE');
+  return request(`${CONFIG_CREDENTIALS_PREFIX}/${exchange}`, 'DELETE');
 }
-
