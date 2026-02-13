@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     exchange_fetch_timeout_seconds: float = 25.0
     max_concurrency_per_exchange: int = 20
     # 市场快照缓存 TTL（秒）：降低外部接口压力与 504 风险
-    market_cache_ttl_seconds: int = 20
+    market_cache_ttl_seconds: int = 300
     leverage_cache_ttl_seconds: int = 3600
     # OKX funding-rate 逐合约抓取的时间预算（秒），超出则降级返回部分结果
     okx_funding_fetch_budget_seconds: float = 12.0
