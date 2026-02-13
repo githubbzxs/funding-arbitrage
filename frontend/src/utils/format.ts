@@ -7,7 +7,7 @@ function asPercentValue(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
-  return Math.abs(value) <= 1 ? value * 100 : value;
+  return value * 100;
 }
 
 export function formatMoney(value: number | null | undefined): string {
