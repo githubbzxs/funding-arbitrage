@@ -13,7 +13,8 @@ import type {
   OpportunityLegInfo,
   OpportunityPairRow
 } from '../types/market';
-import { buildPairTradeUrls } from '../utils/exchangeLinks';
+import { buildPairTradeTargets } from '../utils/exchangeLinks';
+import { openPairTargetsInNewTabs } from '../utils/popupOpen';
 
 const EXCHANGE_OPTIONS = ['binance', 'okx', 'bybit', 'bitget', 'gateio'] as const;
 const LOCAL_CACHE_KEY = 'fa-market-page-cache-v1';
@@ -29,6 +30,11 @@ type LocalCachePayload = {
   cachedAt: number;
 };
 
+type OpenTabsNotice = {
+  kind: 'success' | 'warning';
+  message: string;
+};
+
 const router = useRouter();
 const marketLoading = ref(false);
 const marketError = ref('');
@@ -40,6 +46,7 @@ const marketMeta = ref<MarketMeta | null>(null);
 const refreshInProgress = ref(false);
 const hasLocalCache = ref(false);
 const isMobile = ref(false);
+const openTabsNotice = ref<OpenTabsNotice | null>(null);
 
 const filters = reactive<FilterState>({
   exchanges: []
@@ -385,41 +392,67 @@ function onFilterChange(nextFilters: FilterState): void {
 }
 
 function onManualRefresh(): void {
+  openTabsNotice.value = null;
   void refreshMarketData({ forceRefresh: true });
 }
 
 function openPairPages(row: OpportunityPairRow): void {
-  const urls = buildPairTradeUrls(row.longExchange, row.shortExchange, row.symbol);
-  if (urls.length === 0) {
-    void router.push({
-      path: '/trade/redirect',
-      query: {
-        symbol: row.symbol,
-        long: row.longExchange,
-        short: row.shortExchange
-      }
-    });
+  const targetResult = buildPairTradeTargets(row.longExchange, row.shortExchange, row.symbol);
+  if (targetResult.targets.length === 0) {
+    const reasonParts: string[] = [];
+    if (targetResult.invalidExchanges.length > 0) {
+      reasonParts.push(`不支持交易所：${targetResult.invalidExchanges.join(',')}`);
+    }
+    if (targetResult.failedExchanges.length > 0) {
+      reasonParts.push(`链接生成失败：${targetResult.failedExchanges.join(',')}`);
+    }
+    openTabsNotice.value = {
+      kind: 'warning',
+      message:
+        reasonParts.length > 0
+          ? `无法生成双交易所链接（${reasonParts.join('；')}）。`
+          : '无法生成双交易所链接，请检查交易所和币对参数。'
+    };
     return;
   }
 
-  let blockedCount = 0;
-  urls.forEach((url) => {
-    const popup = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      blockedCount += 1;
-    }
-  });
-
-  if (blockedCount > 0 || urls.length < 2) {
-    void router.push({
-      path: '/trade/redirect',
-      query: {
-        symbol: row.symbol,
-        long: row.longExchange,
-        short: row.shortExchange
-      }
-    });
+  const openResult = openPairTargetsInNewTabs(targetResult.targets);
+  const issueParts: string[] = [];
+  if (targetResult.invalidExchanges.length > 0) {
+    issueParts.push(`不支持交易所：${targetResult.invalidExchanges.join(',')}`);
   }
+  if (targetResult.failedExchanges.length > 0) {
+    issueParts.push(`链接生成失败：${targetResult.failedExchanges.join(',')}`);
+  }
+  if (targetResult.duplicateExchanges.length > 0) {
+    issueParts.push(`重复交易所：${targetResult.duplicateExchanges.join(',')}`);
+  }
+  if (targetResult.targets.length < 2) {
+    issueParts.push(`仅识别到 ${targetResult.targets.length} 个有效交易所链接`);
+  }
+
+  if (openResult.opened < openResult.requested) {
+    const blockedText =
+      openResult.blockedExchanges.length > 0 ? `被拦截：${openResult.blockedExchanges.join(',')}。` : '';
+    openTabsNotice.value = {
+      kind: 'warning',
+      message: `${blockedText}浏览器阻止了部分新标签页，请在地址栏中将本站设置为“允许弹窗和重定向”后重试。`
+    };
+    return;
+  }
+
+  if (issueParts.length > 0) {
+    openTabsNotice.value = {
+      kind: 'warning',
+      message: `${issueParts.join('；')}。`
+    };
+    return;
+  }
+
+  openTabsNotice.value = {
+    kind: 'success',
+    message: '已在新标签页打开两个交易所。'
+  };
 }
 
 function openTrade(row: OpportunityPairRow): void {
@@ -482,6 +515,12 @@ onBeforeUnmount(() => {
       @refresh="onManualRefresh"
     />
 
+    <p
+      v-if="openTabsNotice"
+      :class="openTabsNotice.kind === 'warning' ? 'warn-tip open-tabs-notice' : 'info-tip open-tabs-notice'"
+    >
+      {{ openTabsNotice.message }}
+    </p>
     <p v-if="marketError" class="error-tip">{{ marketError }}</p>
     <p v-else-if="showEmptyCacheTip" class="warn-tip">暂无缓存数据，请点击“立即刷新”加载行情。</p>
     <p v-else-if="snapshotErrors.length > 0" class="warn-tip">
@@ -520,5 +559,18 @@ onBeforeUnmount(() => {
   color: #ffd9a1;
   padding: 8px 10px;
   font-size: 12px;
+}
+
+.info-tip {
+  margin: 0;
+  border: 1px solid rgba(0, 199, 166, 0.45);
+  background: rgba(0, 199, 166, 0.1);
+  color: #9cf6e7;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.open-tabs-notice {
+  line-height: 1.4;
 }
 </style>

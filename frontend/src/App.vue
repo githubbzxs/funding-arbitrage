@@ -12,7 +12,7 @@ const navItems = [
 
 const pageHint = computed(() => {
   if (route.path.startsWith('/trade/redirect')) {
-    return '正在跳转到交易所页面';
+    return '手动跳转工具（备用）';
   }
   if (route.path.startsWith('/trade')) {
     return '交易执行与风控动作';

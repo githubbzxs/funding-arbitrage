@@ -108,3 +108,8 @@
   - Why：避免单一 ccxt 链路波动导致多个交易所同时缺失。
   - Impact：`backend/app/exchanges/providers/ccxt_market.py`，`backend/app/services/market_data.py`，`backend/app/api/market.py`，`backend/app/api/opportunities.py`，`backend/tests/test_gateio_fallback.py`，`backend/tests/test_market_force_refresh.py`
   - Verify：`GET /api/market/snapshots?force_refresh=1` 检查 `meta.exchange_sources`；`cd backend && pytest -q`。
+
+- **[2026-02-13] 双交易所直开链路改为强同步双开并取消主流程中转页回退**：主流程点击币对时改为同步尝试打开两个新标签，若被拦截则在行情页内强提示开启本站弹窗权限；中转页降级为手动工具页。
+  - Why：彻底消除“点击后自动跳转中转页且只打开一个交易所”的主流程干扰，让行为可预测。
+  - Impact：`frontend/src/utils/exchangeLinks.ts`，`frontend/src/utils/popupOpen.ts`，`frontend/src/pages/MarketPage.vue`，`frontend/src/components/MarketTable.vue`，`frontend/src/components/MarketCardList.vue`，`frontend/src/pages/TradeRedirectPage.vue`，`frontend/src/App.vue`，`frontend/package.json`，`frontend/src/utils/exchangeLinks.test.ts`，`frontend/src/utils/popupOpen.test.ts`
+  - Verify：`cd frontend && npm run test`，`cd frontend && npm run build`，手动点击币对验证不再自动跳转 `/trade/redirect` 且拦截时出现权限提示。

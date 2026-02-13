@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
-import { buildExchangeTradeUrl } from '../utils/exchangeLinks';
-
-type RedirectTarget = {
-  exchange: string;
-  url: string;
-};
+import { buildPairTradeTargets, type PairTradeTarget } from '../utils/exchangeLinks';
+import { openPairTargetsInNewTabs } from '../utils/popupOpen';
 
 const route = useRoute();
-const statusMessage = ref('点击“一键重试打开”可同时打开两个交易所页面。');
+const statusMessage = ref('该页面为手动跳转工具（备用），不会在主流程自动触发。');
 const blockedCount = ref(0);
 const tried = ref(false);
 
@@ -28,43 +24,30 @@ const symbol = computed(() => readQueryString('symbol').toUpperCase());
 const longExchange = computed(() => readQueryString('long').toLowerCase());
 const shortExchange = computed(() => readQueryString('short').toLowerCase());
 
-const targets = computed<RedirectTarget[]>(() => {
-  const raw = [
-    { exchange: longExchange.value, url: buildExchangeTradeUrl(longExchange.value, symbol.value) },
-    { exchange: shortExchange.value, url: buildExchangeTradeUrl(shortExchange.value, symbol.value) }
-  ];
-  return raw
-    .filter((item): item is { exchange: string; url: string } => Boolean(item.exchange && item.url))
-    .filter((item, index, list) => list.findIndex((row) => row.exchange === item.exchange) === index);
-});
+const targetResult = computed(() => buildPairTradeTargets(longExchange.value, shortExchange.value, symbol.value));
+const targets = computed<PairTradeTarget[]>(() => targetResult.value.targets);
 
 function openAllTargets(): void {
   tried.value = true;
   blockedCount.value = 0;
   if (targets.value.length === 0) {
-    statusMessage.value = '未找到可用的交易所跳转链接';
+    statusMessage.value = '未找到可用的交易所跳转链接，请检查参数。';
     return;
   }
 
-  targets.value.forEach((target) => {
-    const popup = window.open(target.url, '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      blockedCount.value += 1;
-    }
-  });
-
+  const result = openPairTargetsInNewTabs(targets.value);
+  blockedCount.value = result.requested - result.opened;
   if (blockedCount.value > 0) {
-    statusMessage.value = `浏览器拦截了 ${blockedCount.value} 个新标签页，请用下方“手动打开”按钮。`;
+    statusMessage.value = `浏览器拦截了 ${blockedCount.value} 个新标签页，请先允许本站弹窗与重定向后重试。`;
     return;
   }
   statusMessage.value = '已尝试打开全部交易所页面。';
 }
-
 </script>
 
 <template>
   <section class="panel">
-    <h2>交易所跳转中转</h2>
+    <h2>交易所手动跳转工具（备用）</h2>
     <p class="desc">
       币对：<strong>{{ symbol || '-' }}</strong> | 多腿：<strong>{{ longExchange || '-' }}</strong> | 空腿：<strong>{{ shortExchange || '-' }}</strong>
     </p>
@@ -85,7 +68,7 @@ function openAllTargets(): void {
       <h3>手动打开</h3>
       <a
         v-for="target in targets"
-        :key="target.exchange"
+        :key="`${target.leg}-${target.exchange}`"
         class="link"
         :href="target.url"
         target="_blank"

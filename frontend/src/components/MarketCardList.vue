@@ -31,6 +31,7 @@ function usableLeverage(row: OpportunityPairRow): number | null {
 
 <template>
   <section class="card-list">
+    <p class="open-tip">点击币对会尝试在新标签打开双交易所；若只打开一个，请先允许本站弹窗与重定向。</p>
     <p v-if="loading && rows.length === 0" class="state-tip">数据加载中...</p>
     <p v-else-if="rows.length === 0" class="state-tip">暂无满足条件的数据</p>
 
@@ -76,7 +77,7 @@ function usableLeverage(row: OpportunityPairRow): number | null {
       </dl>
 
       <div class="card-actions">
-        <button type="button" class="action-button" @click="$emit('visitSymbol', row)">打开双交易所</button>
+        <button type="button" class="action-button" @click="$emit('visitSymbol', row)">新标签打开双交易所</button>
         <button type="button" class="action-button accent" @click="$emit('trade', row)">去交易</button>
       </div>
     </article>
@@ -87,6 +88,15 @@ function usableLeverage(row: OpportunityPairRow): number | null {
 .card-list {
   display: grid;
   gap: 10px;
+}
+
+.open-tip {
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  background: #0d141e;
+  color: var(--text-dim);
+  padding: 10px;
+  font-size: 12px;
 }
 
 .state-tip {

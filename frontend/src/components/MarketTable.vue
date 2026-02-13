@@ -31,6 +31,7 @@ function usableLeverage(row: OpportunityPairRow): number | null {
 
 <template>
   <section class="table-shell">
+    <p class="table-tip">点击币对将尝试在新标签打开双交易所；若只打开一个，请先允许本站弹窗与重定向。</p>
     <div class="table-scroll">
       <table class="market-table">
         <thead>
@@ -54,7 +55,7 @@ function usableLeverage(row: OpportunityPairRow): number | null {
           </tr>
           <tr v-for="row in rows" :key="row.id">
             <td class="symbol-cell">
-              <button type="button" class="symbol-link" @click="$emit('visitSymbol', row)">
+              <button type="button" class="symbol-link" title="新标签打开双交易所" @click="$emit('visitSymbol', row)">
                 {{ row.symbol }}
               </button>
             </td>
@@ -89,6 +90,14 @@ function usableLeverage(row: OpportunityPairRow): number | null {
   border: 1px solid var(--line-strong);
   background: var(--panel-bg);
   min-height: 320px;
+}
+
+.table-tip {
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 .table-scroll {

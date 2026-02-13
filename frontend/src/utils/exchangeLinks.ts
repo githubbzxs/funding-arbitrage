@@ -1,9 +1,29 @@
 const SUPPORTED_EXCHANGES = ['binance', 'okx', 'bybit', 'bitget', 'gateio'] as const;
 
-type SupportedExchange = (typeof SUPPORTED_EXCHANGES)[number];
+export type SupportedExchange = (typeof SUPPORTED_EXCHANGES)[number];
+
+export type TradeLeg = 'long' | 'short';
+
+export type PairTradeTarget = {
+  exchange: SupportedExchange;
+  leg: TradeLeg;
+  url: string;
+};
+
+export type PairTradeTargetsResult = {
+  symbol: string;
+  targets: PairTradeTarget[];
+  invalidExchanges: string[];
+  failedExchanges: SupportedExchange[];
+  duplicateExchanges: SupportedExchange[];
+};
 
 function normalizeSymbol(symbol: string): string {
   return symbol.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function normalizeExchange(exchange: string): string {
+  return exchange.trim().toLowerCase();
 }
 
 function resolveBaseAsset(symbol: string): string {
@@ -19,13 +39,19 @@ function isSupportedExchange(exchange: string): exchange is SupportedExchange {
 }
 
 export function buildExchangeTradeUrl(exchange: string, symbol: string): string | null {
-  const normalizedExchange = exchange.toLowerCase();
+  const normalizedExchange = normalizeExchange(exchange);
   if (!isSupportedExchange(normalizedExchange)) {
     return null;
   }
 
   const normalizedSymbol = normalizeSymbol(symbol);
+  if (!normalizedSymbol) {
+    return null;
+  }
   const baseAsset = resolveBaseAsset(normalizedSymbol);
+  if (!baseAsset) {
+    return null;
+  }
 
   if (normalizedExchange === 'binance') {
     return `https://www.binance.com/en/futures/${normalizedSymbol}`;
@@ -42,12 +68,65 @@ export function buildExchangeTradeUrl(exchange: string, symbol: string): string 
   return `https://www.gate.com/futures/USDT/${baseAsset}_USDT`;
 }
 
+export function buildPairTradeTargets(
+  longExchange: string,
+  shortExchange: string,
+  symbol: string,
+): PairTradeTargetsResult {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  const entries: Array<{ leg: TradeLeg; exchange: string }> = [
+    { leg: 'long', exchange: normalizeExchange(longExchange) },
+    { leg: 'short', exchange: normalizeExchange(shortExchange) }
+  ];
+
+  const targets: PairTradeTarget[] = [];
+  const invalidExchanges: string[] = [];
+  const failedExchanges: SupportedExchange[] = [];
+  const duplicateExchanges: SupportedExchange[] = [];
+  const seenExchanges = new Set<SupportedExchange>();
+
+  entries.forEach((entry) => {
+    if (!entry.exchange) {
+      return;
+    }
+    if (!isSupportedExchange(entry.exchange)) {
+      if (!invalidExchanges.includes(entry.exchange)) {
+        invalidExchanges.push(entry.exchange);
+      }
+      return;
+    }
+    if (seenExchanges.has(entry.exchange)) {
+      if (!duplicateExchanges.includes(entry.exchange)) {
+        duplicateExchanges.push(entry.exchange);
+      }
+      return;
+    }
+    const url = buildExchangeTradeUrl(entry.exchange, normalizedSymbol);
+    if (!url) {
+      failedExchanges.push(entry.exchange);
+      return;
+    }
+    seenExchanges.add(entry.exchange);
+    targets.push({
+      exchange: entry.exchange,
+      leg: entry.leg,
+      url
+    });
+  });
+
+  return {
+    symbol: normalizedSymbol,
+    targets,
+    invalidExchanges,
+    failedExchanges,
+    duplicateExchanges
+  };
+}
+
 export function buildPairTradeUrls(
   longExchange: string,
   shortExchange: string,
   symbol: string,
 ): string[] {
-  const urls = [buildExchangeTradeUrl(longExchange, symbol), buildExchangeTradeUrl(shortExchange, symbol)];
-  const normalized = urls.filter((item): item is string => Boolean(item));
-  return normalized.filter((item, index, list) => list.indexOf(item) === index);
+  return buildPairTradeTargets(longExchange, shortExchange, symbol).targets.map((item) => item.url);
 }
