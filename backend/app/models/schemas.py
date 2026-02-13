@@ -80,6 +80,46 @@ class OpportunitiesResponse(BaseModel):
     errors: list[FetchError] = Field(default_factory=list)
 
 
+class OpportunityBoardLeg(BaseModel):
+    """board 表格中的单腿数据。"""
+
+    funding_rate_raw: float | None = None
+    rate_1h: float | None = None
+    rate_8h: float | None = None
+    rate_1y: float | None = None
+    next_funding_time: datetime | None = None
+    max_leverage: float | None = None
+    leveraged_nominal_rate_1y: float | None = None
+    open_interest_usd: float | None = None
+    volume24h_usd: float | None = None
+    settlement_interval: float | None = None
+
+
+class OpportunityBoardRow(BaseModel):
+    """board 表格单行数据。"""
+
+    symbol: str
+    long_exchange: SupportedExchange
+    short_exchange: SupportedExchange
+    long_leg: OpportunityBoardLeg
+    short_leg: OpportunityBoardLeg
+    spread_rate_1h: float | None = None
+    spread_rate_8h: float | None = None
+    spread_rate_1y_nominal: float
+    leveraged_spread_rate_1y_nominal: float | None = None
+    max_usable_leverage: float | None = None
+
+
+class MarketBoardResponse(BaseModel):
+    """市场 board 聚合接口响应。"""
+
+    as_of: datetime = Field(default_factory=utc_now)
+    total: int
+    rows: list[OpportunityBoardRow] = Field(default_factory=list)
+    errors: list[FetchError] = Field(default_factory=list)
+    meta: dict[str, Any] | None = None
+
+
 class ExecutionMode(str, Enum):
     """执行模式。"""
 
