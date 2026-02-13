@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     leverage_cache_ttl_seconds: int = 3600
     # OKX funding-rate 逐合约抓取的时间预算（秒），超出则降级返回部分结果
     okx_funding_fetch_budget_seconds: float = 12.0
+    # ccxt 按 symbol 退化抓取 funding-rate 时的总体预算（秒）
+    ccxt_funding_fetch_budget_seconds: float = 10.0
     enable_ccxt_market_leverage: bool = False
     # API 凭据加密密钥：用于后端托管 API Key/Secret（不配置则禁用托管能力）
     credential_encryption_key: str | None = None

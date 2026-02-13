@@ -47,6 +47,7 @@ class MarketSnapshotsResponse(BaseModel):
     as_of: datetime = Field(default_factory=utc_now)
     snapshots: list[MarketSnapshot] = Field(default_factory=list)
     errors: list[FetchError] = Field(default_factory=list)
+    meta: dict[str, Any] | None = None
 
 
 class Opportunity(BaseModel):
