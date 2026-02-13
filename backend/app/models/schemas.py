@@ -95,6 +95,23 @@ class ExchangeCredential(BaseModel):
     testnet: bool = False
 
 
+class CredentialStatus(BaseModel):
+    """交易所托管凭据状态（不包含明文）。"""
+
+    exchange: SupportedExchange
+    configured: bool
+    api_key_masked: str | None = None
+    has_passphrase: bool = False
+    testnet: bool | None = None
+    updated_at: datetime | None = None
+
+
+class CredentialsResponse(BaseModel):
+    """交易所托管凭据状态列表响应。"""
+
+    items: list[CredentialStatus] = Field(default_factory=list)
+
+
 class ExecutionPreviewRequest(BaseModel):
     """开仓预估请求。"""
 

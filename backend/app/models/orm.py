@@ -33,6 +33,25 @@ class Position(Base):
     )
 
 
+class ExchangeCredentialStore(Base):
+    """交易所 API 凭据托管（加密存储，接口不返回明文）。"""
+
+    __tablename__ = "exchange_credentials"
+
+    exchange: Mapped[str] = mapped_column(String(20), primary_key=True)
+    api_key_enc: Mapped[str] = mapped_column(Text)
+    api_secret_enc: Mapped[str] = mapped_column(Text)
+    passphrase_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    testnet: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        index=True,
+    )
+
+
 class Order(Base):
     """订单记录。"""
 
@@ -82,4 +101,3 @@ class RiskEvent(Base):
         default=utc_now,
         onupdate=utc_now,
     )
-

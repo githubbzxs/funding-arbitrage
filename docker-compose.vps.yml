@@ -37,6 +37,7 @@ services:
       FA_REDIS_URL: "redis://redis:6379/0"
       FA_CORS_ORIGINS: "http://154.201.95.70:8080,http://localhost,http://127.0.0.1"
       FA_ENABLE_CCXT_MARKET_LEVERAGE: "false"
+      FA_CREDENTIAL_ENCRYPTION_KEY: "${FA_CREDENTIAL_ENCRYPTION_KEY}"
     depends_on:
       postgres:
         condition: service_healthy

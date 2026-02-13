@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.credentials import router as credentials_router
 from app.api.execution import router as execution_router
 from app.api.market import router as market_router
 from app.api.opportunities import router as opportunities_router
@@ -28,6 +29,7 @@ app.add_middleware(
 
 app.include_router(market_router)
 app.include_router(opportunities_router)
+app.include_router(credentials_router)
 app.include_router(execution_router)
 app.include_router(records_router)
 

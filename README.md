@@ -71,6 +71,7 @@ docker compose up -d --build
 - `FA_REDIS_URL`：Redis 地址（用于短期缓存）
 - `FA_CORS_ORIGINS`：允许跨域来源
 - `FA_ENABLE_CCXT_MARKET_LEVERAGE`：是否启用 ccxt 公共杠杆探测
+- `FA_CREDENTIAL_ENCRYPTION_KEY`：托管 API 凭据的加密密钥（修改后历史凭据将无法解密）
 
 ## 执行接口说明
 
@@ -80,7 +81,13 @@ docker compose up -d --build
 - `POST /api/execution/hedge`
 - `POST /api/execution/emergency-close`
 
-自动模式下，请在请求体 `credentials` 提供对应交易所 API 凭据：
+自动模式下，优先使用请求体 `credentials` 提供对应交易所 API 凭据；若未提供则尝试使用后端托管凭据（需先配置 `FA_CREDENTIAL_ENCRYPTION_KEY` 并通过凭据接口写入）。
+
+## 托管凭据接口
+
+- `GET /api/credentials`
+- `PUT /api/credentials/{exchange}`
+- `DELETE /api/credentials/{exchange}`
 
 ```json
 {

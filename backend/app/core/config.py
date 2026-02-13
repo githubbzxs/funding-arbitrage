@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # OKX funding-rate 逐合约抓取的时间预算（秒），超出则降级返回部分结果
     okx_funding_fetch_budget_seconds: float = 12.0
     enable_ccxt_market_leverage: bool = False
+    # API 凭据加密密钥：用于后端托管 API Key/Secret（不配置则禁用托管能力）
+    credential_encryption_key: str | None = None
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(

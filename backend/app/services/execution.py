@@ -23,6 +23,7 @@ from app.models.schemas import (
     SupportedExchange,
 )
 from app.services.arbitrage import scan_opportunities
+from app.services.credentials import CredentialService
 from app.services.market_data import MarketDataService
 
 
@@ -144,9 +145,14 @@ class CcxtExecutionGateway:
 class ExecutionService:
     """执行服务：预估、开仓、平仓、对冲、紧急全平。"""
 
-    def __init__(self, market_data_service: MarketDataService) -> None:
+    def __init__(
+        self,
+        market_data_service: MarketDataService,
+        credential_service: CredentialService | None = None,
+    ) -> None:
         self.market_data_service = market_data_service
         self.gateway = CcxtExecutionGateway()
+        self.credential_service = credential_service or CredentialService()
 
     async def preview(self, request: ExecutionPreviewRequest) -> ExecutionPreviewResponse:
         snapshots_resp = await self.market_data_service.fetch_snapshots()
@@ -529,6 +535,12 @@ class ExecutionService:
             return result
 
         credential = credentials.get(exchange)
+        if credential is None:
+            try:
+                credential = await self.credential_service.get_credential(session, exchange)
+            except ValueError:
+                credential = None
+
         if credential is None:
             result = ExecutionLegResult(
                 exchange=exchange,
