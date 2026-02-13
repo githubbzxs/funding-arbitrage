@@ -66,3 +66,15 @@
 - **[2026-02-13] 域名接入完成**：`funding.0xpsyche.me` 已解析到 `154.201.95.70`，并由系统 Nginx 反向代理到 `127.0.0.1:8080`，已签发 Let’s Encrypt 证书并启用 HTTPS。
   - Verify：`https://funding.0xpsyche.me/healthz` 返回 `{"status":"ok"}`，`https://funding.0xpsyche.me/api/market/snapshots` 返回 `200`。
 - **[2026-02-13] 安全约束**：部署凭据仅用于本次会话，不写入仓库记忆文件。
+
+## Memory Updates
+
+- **[2026-02-13] 前端主视图切换为机会对并支持一键打开双交易所页面**：币对点击会按多腿/空腿交易所自动新开两个交易页；主表改为两腿完整信息+系统差值展示。
+  - Why：降低手动切换交易页面的操作成本，统一 1h/4h/8h 在年化口径下比较。
+  - Impact：`frontend/src/App.vue`，`frontend/src/components/MarketTable.vue`，`frontend/src/components/TopFilters.vue`，`frontend/src/components/BottomToolbar.vue`，`frontend/src/api/market.ts`，`frontend/src/types/market.ts`，`frontend/src/utils/exchangeLinks.ts`
+  - Verify：`cd frontend && npm run build`；`cd backend && pytest -q`
+
+- **[2026-02-13] 交易所筛选固定常驻 5 所，移除结算间隔筛选并扩展刷新频率**：筛选项固定 `binance/okx/bybit/bitget/gateio`，结算间隔仅展示不参与筛选，刷新预设改为 `2/5/10/20/30/60` 秒。
+  - Why：避免因单所临时无数据导致筛选缺项，并减少无效筛选维度。
+  - Impact：`frontend/src/App.vue`，`frontend/src/components/TopFilters.vue`，`frontend/src/components/BottomToolbar.vue`
+  - Verify：前端页面手动检查筛选栏与底部工具栏选项。
