@@ -95,6 +95,7 @@ function onRefreshSecondsChange(event: Event): void {
           <option :value="30">30秒</option>
           <option :value="60">60秒</option>
           <option :value="120">120秒</option>
+          <option :value="300">300秒</option>
         </select>
       </label>
     </div>
