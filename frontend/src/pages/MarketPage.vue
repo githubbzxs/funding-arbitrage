@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { fetchOpportunities, fetchSnapshots } from '../api/market';
-import BottomToolbar from '../components/BottomToolbar.vue';
+import MarketCardList from '../components/MarketCardList.vue';
 import MarketTable from '../components/MarketTable.vue';
 import TopFilters from '../components/TopFilters.vue';
 import type {
@@ -13,8 +13,21 @@ import type {
   OpportunityLegInfo,
   OpportunityPairRow
 } from '../types/market';
+import { buildPairTradeUrls } from '../utils/exchangeLinks';
 
 const EXCHANGE_OPTIONS = ['binance', 'okx', 'bybit', 'bitget', 'gateio'] as const;
+const LOCAL_CACHE_KEY = 'fa-market-page-cache-v1';
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const MOBILE_QUERY = '(max-width: 960px)';
+
+type LocalCachePayload = {
+  snapshots: MarketRow[];
+  opportunities: MarketRow[];
+  snapshotErrors: MarketFetchError[];
+  marketMeta: MarketMeta | null;
+  updatedAt: string;
+  cachedAt: number;
+};
 
 const router = useRouter();
 const marketLoading = ref(false);
@@ -24,14 +37,17 @@ const snapshots = ref<MarketRow[]>([]);
 const opportunities = ref<MarketRow[]>([]);
 const snapshotErrors = ref<MarketFetchError[]>([]);
 const marketMeta = ref<MarketMeta | null>(null);
+const refreshInProgress = ref(false);
+const hasLocalCache = ref(false);
+const isMobile = ref(false);
 
 const filters = reactive<FilterState>({
   exchanges: []
 });
 
-const autoRefresh = ref(true);
-const refreshSeconds = ref(10);
 let timerId: number | undefined;
+let mediaQuery: MediaQueryList | null = null;
+let mediaQueryHandler: ((event: MediaQueryListEvent) => void) | null = null;
 
 function rowScore(row: OpportunityPairRow): number {
   const leveraged = row.leveragedSpreadRate1yNominal;
@@ -127,6 +143,63 @@ function buildLegInfo(
   };
 }
 
+function applyLocalCache(payload: LocalCachePayload): void {
+  snapshots.value = payload.snapshots;
+  opportunities.value = payload.opportunities;
+  snapshotErrors.value = payload.snapshotErrors;
+  marketMeta.value = payload.marketMeta;
+  lastUpdated.value = payload.updatedAt;
+}
+
+function readLocalCache(): LocalCachePayload | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const raw = window.localStorage.getItem(LOCAL_CACHE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<LocalCachePayload>;
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    if (!Array.isArray(parsed.snapshots) || !Array.isArray(parsed.opportunities) || !Array.isArray(parsed.snapshotErrors)) {
+      return null;
+    }
+    return {
+      snapshots: parsed.snapshots as MarketRow[],
+      opportunities: parsed.opportunities as MarketRow[],
+      snapshotErrors: parsed.snapshotErrors as MarketFetchError[],
+      marketMeta: (parsed.marketMeta ?? null) as MarketMeta | null,
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
+      cachedAt: typeof parsed.cachedAt === 'number' ? parsed.cachedAt : Date.now()
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalCache(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const payload: LocalCachePayload = {
+    snapshots: snapshots.value,
+    opportunities: opportunities.value,
+    snapshotErrors: snapshotErrors.value,
+    marketMeta: marketMeta.value,
+    updatedAt: lastUpdated.value,
+    cachedAt: Date.now()
+  };
+  try {
+    window.localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // 忽略本地缓存写入异常，避免影响主流程。
+  }
+}
+
+const hasAnyData = computed(() => snapshots.value.length > 0 || opportunities.value.length > 0);
 const exchangeOptions = computed<string[]>(() => [...EXCHANGE_OPTIONS]);
 
 const snapshotIndex = computed(() => {
@@ -228,6 +301,10 @@ const filteredRows = computed<OpportunityPairRow[]>(() =>
   })
 );
 
+const showEmptyCacheTip = computed(
+  () => !hasLocalCache.value && !hasAnyData.value && !marketLoading.value && !marketError.value && !refreshInProgress.value
+);
+
 const statusLine = computed(() => {
   const parts: string[] = [];
   if (marketMeta.value?.fetchMs !== null && typeof marketMeta.value?.fetchMs === 'number') {
@@ -255,6 +332,9 @@ const statusLine = computed(() => {
       parts.push(`0快照: ${zeroParts.join(',')}`);
     }
   }
+  if (hasLocalCache.value && parts.length === 0) {
+    parts.push('当前展示本地缓存数据');
+  }
   return parts.join(' | ');
 });
 
@@ -267,28 +347,36 @@ function clearTimer(): void {
 
 function setupTimer(): void {
   clearTimer();
-  if (!autoRefresh.value) {
-    return;
-  }
   timerId = window.setInterval(() => {
     void refreshMarketData();
-  }, refreshSeconds.value * 1000);
+  }, REFRESH_INTERVAL_MS);
 }
 
-async function refreshMarketData(): Promise<void> {
-  marketLoading.value = true;
+async function refreshMarketData(options?: { forceRefresh?: boolean }): Promise<void> {
+  if (refreshInProgress.value) {
+    return;
+  }
+  refreshInProgress.value = true;
   marketError.value = '';
+  marketLoading.value = !hasAnyData.value;
   try {
-    const [snapshotResult, opportunityRows] = await Promise.all([fetchSnapshots(), fetchOpportunities()]);
+    const forceRefresh = options?.forceRefresh === true;
+    const [snapshotResult, opportunityRows] = await Promise.all([
+      fetchSnapshots({ forceRefresh }),
+      fetchOpportunities({ forceRefresh })
+    ]);
     snapshots.value = snapshotResult.rows;
     opportunities.value = opportunityRows;
     snapshotErrors.value = snapshotResult.errors;
     marketMeta.value = snapshotResult.meta;
     lastUpdated.value = new Date().toLocaleString('zh-CN');
+    hasLocalCache.value = true;
+    saveLocalCache();
   } catch (error) {
     marketError.value = error instanceof Error ? error.message : '拉取市场数据失败';
   } finally {
     marketLoading.value = false;
+    refreshInProgress.value = false;
   }
 }
 
@@ -296,15 +384,42 @@ function onFilterChange(nextFilters: FilterState): void {
   filters.exchanges = nextFilters.exchanges;
 }
 
+function onManualRefresh(): void {
+  void refreshMarketData({ forceRefresh: true });
+}
+
 function openPairPages(row: OpportunityPairRow): void {
-  void router.push({
-    path: '/trade/redirect',
-    query: {
-      symbol: row.symbol,
-      long: row.longExchange,
-      short: row.shortExchange
+  const urls = buildPairTradeUrls(row.longExchange, row.shortExchange, row.symbol);
+  if (urls.length === 0) {
+    void router.push({
+      path: '/trade/redirect',
+      query: {
+        symbol: row.symbol,
+        long: row.longExchange,
+        short: row.shortExchange
+      }
+    });
+    return;
+  }
+
+  let blockedCount = 0;
+  urls.forEach((url) => {
+    const popup = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      blockedCount += 1;
     }
   });
+
+  if (blockedCount > 0 || urls.length < 2) {
+    void router.push({
+      path: '/trade/redirect',
+      query: {
+        symbol: row.symbol,
+        long: row.longExchange,
+        short: row.shortExchange
+      }
+    });
+  }
 }
 
 function openTrade(row: OpportunityPairRow): void {
@@ -319,15 +434,39 @@ function openTrade(row: OpportunityPairRow): void {
   });
 }
 
-watch([autoRefresh, refreshSeconds], setupTimer);
+function setupMobileWatcher(): void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return;
+  }
+  mediaQuery = window.matchMedia(MOBILE_QUERY);
+  isMobile.value = mediaQuery.matches;
+  mediaQueryHandler = (event: MediaQueryListEvent) => {
+    isMobile.value = event.matches;
+  };
+  mediaQuery.addEventListener('change', mediaQueryHandler);
+}
 
-onMounted(async () => {
-  await refreshMarketData();
+function cleanupMobileWatcher(): void {
+  if (mediaQuery && mediaQueryHandler) {
+    mediaQuery.removeEventListener('change', mediaQueryHandler);
+  }
+  mediaQuery = null;
+  mediaQueryHandler = null;
+}
+
+onMounted(() => {
+  setupMobileWatcher();
+  const cached = readLocalCache();
+  if (cached) {
+    applyLocalCache(cached);
+    hasLocalCache.value = true;
+  }
   setupTimer();
 });
 
 onBeforeUnmount(() => {
   clearTimer();
+  cleanupMobileWatcher();
 });
 </script>
 
@@ -338,25 +477,32 @@ onBeforeUnmount(() => {
       :exchange-options="exchangeOptions"
       :updated-at="lastUpdated"
       :status-line="statusLine"
+      :refreshing="refreshInProgress"
       @update:model-value="onFilterChange"
-      @refresh="refreshMarketData"
+      @refresh="onManualRefresh"
     />
 
     <p v-if="marketError" class="error-tip">{{ marketError }}</p>
+    <p v-else-if="showEmptyCacheTip" class="warn-tip">暂无缓存数据，请点击“立即刷新”加载行情。</p>
     <p v-else-if="snapshotErrors.length > 0" class="warn-tip">
       部分交易所抓取失败：{{
         snapshotErrors.map((item) => `${item.exchange}: ${item.message}`).join(' | ')
       }}
     </p>
 
-    <MarketTable :rows="filteredRows" :loading="marketLoading" @trade="openTrade" @visit-symbol="openPairPages" />
-
-    <BottomToolbar
-      :auto-refresh="autoRefresh"
-      :refresh-seconds="refreshSeconds"
-      @update:auto-refresh="autoRefresh = $event"
-      @update:refresh-seconds="refreshSeconds = $event"
-      @refresh="refreshMarketData"
+    <MarketCardList
+      v-if="isMobile"
+      :rows="filteredRows"
+      :loading="marketLoading"
+      @trade="openTrade"
+      @visit-symbol="openPairPages"
+    />
+    <MarketTable
+      v-else
+      :rows="filteredRows"
+      :loading="marketLoading && filteredRows.length === 0"
+      @trade="openTrade"
+      @visit-symbol="openPairPages"
     />
   </div>
 </template>
@@ -365,7 +511,6 @@ onBeforeUnmount(() => {
 .page-grid {
   display: grid;
   gap: 10px;
-  padding-bottom: 56px;
 }
 
 .warn-tip {

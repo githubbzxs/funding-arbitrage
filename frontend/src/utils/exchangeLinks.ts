@@ -48,5 +48,6 @@ export function buildPairTradeUrls(
   symbol: string,
 ): string[] {
   const urls = [buildExchangeTradeUrl(longExchange, symbol), buildExchangeTradeUrl(shortExchange, symbol)];
-  return urls.filter((item): item is string => Boolean(item));
+  const normalized = urls.filter((item): item is string => Boolean(item));
+  return normalized.filter((item, index, list) => list.indexOf(item) === index);
 }

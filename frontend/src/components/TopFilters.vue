@@ -7,6 +7,7 @@ const props = defineProps<{
   exchangeOptions: string[];
   updatedAt: string;
   statusLine?: string;
+  refreshing?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -59,7 +60,9 @@ function resetFilters(): void {
         <div>上次刷新：{{ updatedAt || '-' }}</div>
         <div v-if="statusLine">{{ statusLine }}</div>
       </div>
-      <button type="button" class="ghost" @click="$emit('refresh')">立即刷新</button>
+      <button type="button" class="ghost" :disabled="refreshing" @click="$emit('refresh')">
+        {{ refreshing ? '刷新中...' : '立即刷新' }}
+      </button>
       <button type="button" class="ghost" @click="resetFilters">重置筛选</button>
     </div>
   </section>
@@ -142,6 +145,12 @@ function resetFilters(): void {
 
 .ghost:hover {
   border-color: var(--accent);
+}
+
+.ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: var(--line-soft);
 }
 
 @media (max-width: 720px) {

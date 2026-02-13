@@ -33,16 +33,16 @@ class MarketDataService:
         self._last_success_at_ts: dict[SupportedExchange, float] = {}
         self._stale_fallback_max_age_seconds = max(30, self._settings.market_cache_ttl_seconds * 6)
 
-    async def fetch_snapshots(self) -> MarketSnapshotsResponse:
+    async def fetch_snapshots(self, force_refresh: bool = False) -> MarketSnapshotsResponse:
         now = time.monotonic()
         cached_local = self._local_cache_payload
-        if cached_local is not None and self._local_cache_expires_at_ts > now:
+        if not force_refresh and cached_local is not None and self._local_cache_expires_at_ts > now:
             meta = dict(cached_local.meta or {})
             meta["cache_hit"] = True
             return cached_local.model_copy(update={"meta": meta, "as_of": cached_local.as_of})
 
         cache_key = "fa:market:snapshots:v2"
-        cached = await cache_get_json(cache_key)
+        cached = None if force_refresh else await cache_get_json(cache_key)
         if isinstance(cached, dict):
             snapshots_raw = cached.get("snapshots", [])
             errors_raw = cached.get("errors", [])
@@ -104,6 +104,7 @@ class MarketDataService:
             meta={
                 "fetch_ms": int((time.perf_counter() - started_at) * 1000),
                 "cache_hit": False,
+                "force_refresh": force_refresh,
                 "exchanges_ok": exchanges_ok,
                 "exchanges_failed": exchanges_failed,
                 "exchange_sources": exchange_sources,

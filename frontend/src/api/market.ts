@@ -242,8 +242,9 @@ function normalizeMeta(payload: unknown): MarketMeta | null {
   };
 }
 
-export async function fetchSnapshots(): Promise<SnapshotResult> {
-  const payload = await request<unknown>('/api/market/snapshots');
+export async function fetchSnapshots(options?: { forceRefresh?: boolean }): Promise<SnapshotResult> {
+  const query = options?.forceRefresh ? '?force_refresh=1' : '';
+  const payload = await request<unknown>(`/api/market/snapshots${query}`);
   return {
     rows: normalizeList(payload).map(buildSnapshotRow),
     errors: normalizeErrors(payload),
@@ -251,8 +252,9 @@ export async function fetchSnapshots(): Promise<SnapshotResult> {
   };
 }
 
-export async function fetchOpportunities(): Promise<MarketRow[]> {
-  const payload = await request<unknown>('/api/opportunities');
+export async function fetchOpportunities(options?: { forceRefresh?: boolean }): Promise<MarketRow[]> {
+  const query = options?.forceRefresh ? '?force_refresh=1' : '';
+  const payload = await request<unknown>(`/api/opportunities${query}`);
   return normalizeList(payload).map(buildOpportunityRow);
 }
 

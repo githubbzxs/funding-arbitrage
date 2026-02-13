@@ -7,8 +7,12 @@ from typing import Any
 
 import httpx
 
+from app.exchanges.binance import BinanceFetcher
+from app.exchanges.bitget import BitgetFetcher
+from app.exchanges.bybit import BybitFetcher
 from app.core.config import get_settings
 from app.exchanges.gateio import GateIoFetcher
+from app.exchanges.okx import OkxFetcher
 from app.exchanges.leverage import CCXT_EXCHANGE_MAP, get_leverage_map
 from app.exchanges.utils import build_snapshot, normalize_usdt_symbol, parse_exchange_timestamp, safe_float
 from app.models.schemas import MarketSnapshot, SupportedExchange
@@ -98,6 +102,18 @@ def _resolve_row_leverage(row: dict[str, Any]) -> float | None:
     return None
 
 
+def _build_rest_fallback_fetcher(exchange: SupportedExchange):
+    if exchange == "binance":
+        return BinanceFetcher()
+    if exchange == "okx":
+        return OkxFetcher()
+    if exchange == "bybit":
+        return BybitFetcher()
+    if exchange == "bitget":
+        return BitgetFetcher()
+    return GateIoFetcher()
+
+
 class CcxtMarketProvider:
     """基于 ccxt 的统一行情抓取器。"""
 
@@ -105,17 +121,13 @@ class CcxtMarketProvider:
         self.exchange = exchange
         self._settings = get_settings()
         self._ccxt_id = CCXT_EXCHANGE_MAP[exchange]
-        self._gateio_fallback_fetcher = GateIoFetcher() if exchange == "gateio" else None
+        self._rest_fallback_fetcher = _build_rest_fallback_fetcher(exchange)
 
     async def fetch_snapshots(self) -> list[MarketSnapshot]:
         snapshots, _ = await self.fetch_snapshots_with_source()
         return snapshots
 
     async def fetch_snapshots_with_source(self) -> tuple[list[MarketSnapshot], str]:
-        if self.exchange != "gateio":
-            snapshots = await self._fetch_ccxt_snapshots()
-            return snapshots, "ccxt"
-
         ccxt_error: Exception | None = None
         ccxt_snapshots: list[MarketSnapshot] = []
         try:
@@ -126,13 +138,13 @@ class CcxtMarketProvider:
         if ccxt_snapshots:
             return ccxt_snapshots, "ccxt"
 
-        fallback_snapshots = await self._fetch_gateio_fallback()
+        fallback_snapshots = await self._fetch_rest_fallback()
         if fallback_snapshots:
             return fallback_snapshots, "legacy_rest"
 
         if ccxt_error is not None:
-            raise RuntimeError(f"gateio ccxt 抓取失败且原生兜底为空: {ccxt_error}") from ccxt_error
-        raise RuntimeError("gateio ccxt 抓取为空且原生兜底为空")
+            raise RuntimeError(f"{self.exchange} ccxt 抓取失败且原生兜底为空: {ccxt_error}") from ccxt_error
+        raise RuntimeError(f"{self.exchange} ccxt 抓取为空且原生兜底为空")
 
     async def _fetch_ccxt_snapshots(self) -> list[MarketSnapshot]:
         try:
@@ -195,14 +207,14 @@ class CcxtMarketProvider:
             except Exception:
                 pass
 
-    async def _fetch_gateio_fallback(self) -> list[MarketSnapshot]:
-        if self.exchange != "gateio" or self._gateio_fallback_fetcher is None:
+    async def _fetch_rest_fallback(self) -> list[MarketSnapshot]:
+        if self._rest_fallback_fetcher is None:
             return []
 
         timeout = httpx.Timeout(self._settings.request_timeout_seconds)
         limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
         async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
-            return await self._gateio_fallback_fetcher.fetch_snapshots(client)
+            return await self._rest_fallback_fetcher.fetch_snapshots(client)
 
     async def _fetch_funding_rows(self, client: Any) -> dict[str, dict[str, Any]]:
         has = getattr(client, "has", {}) or {}

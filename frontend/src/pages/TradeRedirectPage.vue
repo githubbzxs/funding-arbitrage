@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { buildExchangeTradeUrl } from '../utils/exchangeLinks';
 
@@ -9,7 +9,7 @@ type RedirectTarget = {
 };
 
 const route = useRoute();
-const statusMessage = ref('准备跳转...');
+const statusMessage = ref('点击“一键重试打开”可同时打开两个交易所页面。');
 const blockedCount = ref(0);
 const tried = ref(false);
 
@@ -60,9 +60,6 @@ function openAllTargets(): void {
   statusMessage.value = '已尝试打开全部交易所页面。';
 }
 
-onMounted(() => {
-  openAllTargets();
-});
 </script>
 
 <template>

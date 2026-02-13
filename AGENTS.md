@@ -98,3 +98,13 @@
   - Why：修复“杠杆后年化/可用杠杆缺失”与“Gate.io 间歇缺失”导致的机会列表不稳定问题。
   - Impact：`backend/app/exchanges/leverage.py`，`backend/app/exchanges/providers/ccxt_market.py`，`backend/app/services/market_data.py`，`frontend/src/api/market.ts`，`frontend/src/types/market.ts`，`frontend/src/pages/MarketPage.vue`，`docker-compose.yml`，`docker-compose.vps.yml`
   - Verify：`cd backend && pytest -q`，`cd frontend && npm run build`，调用 `GET /api/market/snapshots` 检查 `meta.exchange_sources` 与 `meta.exchange_counts`。
+
+- **[2026-02-13] 行情页改为缓存优先+五分钟刷新并修复双交易所跳转**：进入页面优先读取本地缓存，不再立即发起网络请求；统一改为 5 分钟自动刷新 + 顶部单一手动刷新按钮；币对点击改为用户手势内直接打开双交易所，失败时回退中转页手动打开。
+  - Why：解决“点击后只开一个交易所”“立即刷新无体感”“进入页面即刷导致等待”的体验问题。
+  - Impact：`frontend/src/pages/MarketPage.vue`，`frontend/src/components/TopFilters.vue`，`frontend/src/pages/TradeRedirectPage.vue`，`frontend/src/utils/exchangeLinks.ts`，`frontend/src/components/MarketCardList.vue`
+  - Verify：手动点击币对应能同时打开两所；刷新按钮显示“刷新中”；新开页面在有缓存时立即展示，5 分钟后自动刷新。
+
+- **[2026-02-13] 抓取失败回退升级为全交易所 ccxt->REST->stale**：统一 provider 在 ccxt 失败或空结果时回退到各交易所原生 REST 抓取，最终仍可回退 stale 数据，接口支持 `force_refresh` 跳过缓存。
+  - Why：避免单一 ccxt 链路波动导致多个交易所同时缺失。
+  - Impact：`backend/app/exchanges/providers/ccxt_market.py`，`backend/app/services/market_data.py`，`backend/app/api/market.py`，`backend/app/api/opportunities.py`，`backend/tests/test_gateio_fallback.py`，`backend/tests/test_market_force_refresh.py`
+  - Verify：`GET /api/market/snapshots?force_refresh=1` 检查 `meta.exchange_sources`；`cd backend && pytest -q`。
