@@ -21,6 +21,7 @@ async def get_market_snapshots(
 async def get_market_board(
     limit: int = Query(default=500, ge=1, le=5000),
     min_spread_rate_1y_nominal: float = Query(default=0.0),
+    min_next_cycle_score: float = Query(default=0.0),
     force_refresh: bool = Query(default=False, description="是否跳过缓存强制刷新"),
     exchanges: list[SupportedExchange] | None = Query(default=None, description="交易所过滤，可多选"),
     symbol: str | None = Query(default=None, description="币对过滤，例如 BTCUSDT"),
@@ -31,6 +32,7 @@ async def get_market_board(
         market_data_service=market_data_service,
         limit=limit,
         min_spread_rate_1y_nominal=min_spread_rate_1y_nominal,
+        min_next_cycle_score=min_next_cycle_score,
         force_refresh=force_refresh,
         exchanges=exchanges,
         symbol=symbol,

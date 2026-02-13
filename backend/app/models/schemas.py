@@ -97,6 +97,17 @@ class OpportunityBoardLeg(BaseModel):
     settlement_interval_hours: float | None = None
 
 
+class SettlementEvent(BaseModel):
+    """结算窗口内的事件明细。"""
+
+    time: datetime
+    kind: Literal["both", "long_only", "short_only"]
+    rate: float
+    leveraged_rate: float
+    long_rate_raw: float | None = None
+    short_rate_raw: float | None = None
+
+
 class OpportunityBoardRow(BaseModel):
     """board 表格单行数据。"""
 
@@ -113,6 +124,14 @@ class OpportunityBoardRow(BaseModel):
     spread_rate_1y_nominal: float
     leveraged_spread_rate_1y_nominal: float | None = None
     max_usable_leverage: float | None = None
+    next_sync_settlement_time: datetime | None = None
+    window_hours_to_sync: float | None = None
+    next_cycle_score: float | None = None
+    next_cycle_score_unlevered: float | None = None
+    settlement_events_preview: list[SettlementEvent] = Field(default_factory=list)
+    single_side_event_count: int = 0
+    single_side_total_rate: float | None = None
+    calc_status: Literal["ok", "missing_data", "no_sync_found"] = "missing_data"
 
 
 class MarketBoardResponse(BaseModel):

@@ -6,7 +6,7 @@ const props = defineProps<{
   exchanges: string[];
   symbol: string;
   limit: number;
-  minSpreadRate1yNominal: number;
+  minNextCycleScore: number;
   autoRefresh: boolean;
   refreshSeconds: number;
   refreshing: boolean;
@@ -19,7 +19,7 @@ const emit = defineEmits<{
   'update:exchanges': [string[]];
   'update:symbol': [string];
   'update:limit': [number];
-  'update:minSpreadRate1yNominal': [number];
+  'update:minNextCycleScore': [number];
   'update:autoRefresh': [boolean];
   'update:refreshSeconds': [number];
   refresh: [];
@@ -48,10 +48,10 @@ function onLimitChange(event: Event): void {
   }
 }
 
-function onMinSpreadChange(event: Event): void {
+function onMinNextCycleScoreChange(event: Event): void {
   const target = event.target as HTMLInputElement;
   const parsed = Number(target.value);
-  emit('update:minSpreadRate1yNominal', Number.isFinite(parsed) ? parsed : 0);
+  emit('update:minNextCycleScore', Number.isFinite(parsed) ? parsed : 0);
 }
 
 function onRefreshSecondsChange(event: Event): void {
@@ -72,8 +72,8 @@ function onRefreshSecondsChange(event: Event): void {
       </label>
 
       <label class="field">
-        <span>最小名义年化差(%)</span>
-        <input :value="minSpreadRate1yNominal" type="number" step="1" @input="onMinSpreadChange" />
+        <span>最小统一指标(%)</span>
+        <input :value="minNextCycleScore" type="number" step="1" @input="onMinNextCycleScoreChange" />
       </label>
 
       <label class="field">

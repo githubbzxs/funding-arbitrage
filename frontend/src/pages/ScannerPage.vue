@@ -5,9 +5,9 @@ import ScannerMobileCards from '../components/ScannerMobileCards.vue';
 import ScannerTableVirtual from '../components/ScannerTableVirtual.vue';
 import ScannerToolbar from '../components/ScannerToolbar.vue';
 import { useScannerQuery } from '../composables/useScannerQuery';
-import type { MarginSimulation, OpportunityBoardRow } from '../types/market';
+import type { MarginSimulation, OpportunityBoardRow, SettlementEventPreview } from '../types/market';
 import { buildPairTradeTargets } from '../utils/exchangeLinks';
-import { calcMarginSimulation, parseMarginUsd } from '../utils/marginSim';
+import { calcMarginSimulation, parseMarginUsd, resolveSettlementEvents } from '../utils/marginSim';
 import { openPairTargetsInNewTabs } from '../utils/popupOpen';
 
 const EXCHANGE_OPTIONS = ['binance', 'okx', 'bybit', 'bitget', 'gateio'] as const;
@@ -18,7 +18,7 @@ const router = useRouter();
 const exchanges = ref<string[]>([]);
 const symbol = ref('');
 const limit = ref(1200);
-const minSpreadRate1yNominal = ref(0);
+const minNextCycleScore = ref(0);
 const autoRefresh = ref(true);
 const refreshSeconds = ref(30);
 const isMobile = ref(false);
@@ -30,7 +30,7 @@ let mediaQueryHandler: ((event: MediaQueryListEvent) => void) | null = null;
 
 const { query, refreshNow } = useScannerQuery({
   limit,
-  minSpreadRate1yNominal,
+  minNextCycleScore,
   exchanges,
   symbol,
   autoRefresh,
@@ -40,6 +40,13 @@ const { query, refreshNow } = useScannerQuery({
 const rows = computed(() => query.data.value?.rows ?? []);
 const total = computed(() => query.data.value?.total ?? rows.value.length);
 const loading = computed(() => query.isPending.value || query.isFetching.value);
+const settlementEventsByRowId = computed<Record<string, SettlementEventPreview[]>>(() => {
+  const output: Record<string, SettlementEventPreview[]> = {};
+  rows.value.forEach((row) => {
+    output[row.id] = resolveSettlementEvents(row);
+  });
+  return output;
+});
 const simulationByRowId = computed<Record<string, MarginSimulation | null>>(() => {
   const output: Record<string, MarginSimulation | null> = {};
   rows.value.forEach((row) => {
@@ -53,7 +60,7 @@ const simulationByRowId = computed<Record<string, MarginSimulation | null>>(() =
       output[row.id] = null;
       return;
     }
-    output[row.id] = calcMarginSimulation(row, marginUsd, 24);
+    output[row.id] = calcMarginSimulation(row, marginUsd);
   });
   return output;
 });
@@ -185,8 +192,8 @@ function onLimitChange(value: number): void {
   limit.value = value;
 }
 
-function onMinSpreadChange(value: number): void {
-  minSpreadRate1yNominal.value = value;
+function onMinNextCycleScoreChange(value: number): void {
+  minNextCycleScore.value = value;
 }
 
 function onAutoRefreshChange(value: boolean): void {
@@ -235,7 +242,7 @@ onBeforeUnmount(() => {
       :exchanges="exchanges"
       :symbol="symbol"
       :limit="limit"
-      :min-spread-rate1y-nominal="minSpreadRate1yNominal"
+      :min-next-cycle-score="minNextCycleScore"
       :auto-refresh="autoRefresh"
       :refresh-seconds="refreshSeconds"
       :refreshing="loading"
@@ -245,7 +252,7 @@ onBeforeUnmount(() => {
       @update:exchanges="onExchangesChange"
       @update:symbol="onSymbolChange"
       @update:limit="onLimitChange"
-      @update:min-spread-rate1y-nominal="onMinSpreadChange"
+      @update:min-next-cycle-score="onMinNextCycleScoreChange"
       @update:auto-refresh="onAutoRefreshChange"
       @update:refresh-seconds="onRefreshSecondsChange"
       @refresh="manualRefresh"
@@ -254,9 +261,9 @@ onBeforeUnmount(() => {
     <p v-if="openNotice" class="notice" :class="openNotice.kind === 'warning' ? 'warn' : 'ok'">{{ openNotice.message }}</p>
     <p v-if="errorMessage" class="notice warn">{{ errorMessage }}</p>
     <section class="sim-guide">
-      <h3>保证金模拟（24h）</h3>
-      <p>间隔相同：按双边对冲正常计算。</p>
-      <p>间隔不同：会标记短间隔一侧，收益拆成“对冲部分 + 短间隔单边部分”。</p>
+      <h3>结算窗口与模拟口径</h3>
+      <p>窗口统一为“到下一次同结算”，默认使用可用杠杆计算统一指标。</p>
+      <p>间隔不同会展示“单边结算次数 + 摘要”，默认收起，可展开查看逐次事件明细。</p>
     </section>
 
     <ScannerMobileCards
@@ -264,6 +271,7 @@ onBeforeUnmount(() => {
       :rows="rows"
       :loading="loading"
       :margin-inputs="marginInputs"
+      :settlement-events-by-row-id="settlementEventsByRowId"
       :simulations="simulationByRowId"
       @open-detail="openDetail"
       @open-pair="openPairPages"
@@ -275,6 +283,7 @@ onBeforeUnmount(() => {
       :rows="rows"
       :loading="loading"
       :margin-inputs="marginInputs"
+      :settlement-events-by-row-id="settlementEventsByRowId"
       :simulations="simulationByRowId"
       @open-detail="openDetail"
       @open-pair="openPairPages"

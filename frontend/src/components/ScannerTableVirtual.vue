@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { useVirtualizer } from '@tanstack/vue-virtual';
-import { computed, ref } from 'vue';
-import type { MarginSimulation, OpportunityBoardRow } from '../types/market';
-import { formatLeverage, formatMoney, formatPercent } from '../utils/format';
+import type { MarginSimulation, OpportunityBoardRow, SettlementEventPreview } from '../types/market';
+import { formatLeverage, formatMoney, formatPercent, formatTime } from '../utils/format';
+import { resolveNextSettlementTime, resolveSingleSideEventCount } from '../utils/marginSim';
 
 const props = defineProps<{
   rows: OpportunityBoardRow[];
   loading: boolean;
   marginInputs: Record<string, string>;
+  settlementEventsByRowId: Record<string, SettlementEventPreview[]>;
   simulations: Record<string, MarginSimulation | null>;
 }>();
 
@@ -18,21 +18,6 @@ const emit = defineEmits<{
   updateMargin: [{ rowId: string; value: string }];
 }>();
 
-const ROW_HEIGHT = 108;
-
-const containerRef = ref<HTMLElement | null>(null);
-
-const rowVirtualizer = useVirtualizer(
-  computed(() => ({
-    count: props.rows.length,
-    getScrollElement: () => containerRef.value,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 8,
-  }))
-);
-
-const virtualItems = computed(() => rowVirtualizer.value.getVirtualItems());
-
 function colorClass(value: number | null): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return '';
@@ -40,84 +25,138 @@ function colorClass(value: number | null): string {
   return value >= 0 ? 'positive' : 'negative';
 }
 
-function shorterSideText(side: 'long' | 'short' | null): string {
+function sideText(side: 'long' | 'short' | null): string {
   if (side === 'long') {
     return '多腿';
   }
   if (side === 'short') {
     return '空腿';
   }
-  return '-';
+  return '未知';
 }
 
 function onMarginInput(rowId: string, event: Event): void {
   const target = event.target as HTMLInputElement;
   emit('updateMargin', { rowId, value: target.value });
 }
+
+function rowEvents(row: OpportunityBoardRow): SettlementEventPreview[] {
+  return props.settlementEventsByRowId[row.id] ?? [];
+}
+
+function singleSideCount(row: OpportunityBoardRow, events: SettlementEventPreview[]): number {
+  return resolveSingleSideEventCount(row, events);
+}
+
+function nextSettlementText(row: OpportunityBoardRow, events: SettlementEventPreview[]): string {
+  return formatTime(resolveNextSettlementTime(row, events));
+}
+
+function singleSideBrief(events: SettlementEventPreview[]): string {
+  const singleSideEvents = events.filter((event) => event.kind === 'single_side');
+  if (singleSideEvents.length === 0) {
+    return '同结算窗口内无单边事件';
+  }
+  const preview = singleSideEvents
+    .slice(0, 2)
+    .map((event) => `${sideText(event.side)} ${formatPercent(event.amountRate, 4)}`)
+    .join(' / ');
+  const suffix = singleSideEvents.length > 2 ? `，其余 ${singleSideEvents.length - 2} 次见明细` : '';
+  return `${preview}${suffix}`;
+}
+
+function eventTitle(event: SettlementEventPreview): string {
+  if (event.kind === 'single_side') {
+    return `${sideText(event.side)}单边`;
+  }
+  if (event.kind === 'hedged') {
+    return '同结算';
+  }
+  return '结算事件';
+}
+
+function simulationEventTitle(simulation: MarginSimulation, index: number): string {
+  const event = simulation.events[index];
+  if (!event) {
+    return `事件 ${index + 1}`;
+  }
+  if (event.kind === 'single_side') {
+    return `${sideText(event.side)}单边`;
+  }
+  if (event.kind === 'hedged') {
+    return '同结算';
+  }
+  return event.summary || `事件 ${index + 1}`;
+}
 </script>
 
 <template>
   <section class="table-shell">
-    <header class="table-head">
-      <span>币对</span>
-      <span>套利方向</span>
-      <span>资金费率(原始)</span>
-      <span>结算间隔</span>
-      <span>价差(1h/8h/年化)</span>
-      <span>杠杆后年化</span>
-      <span>保证金模拟(24h)</span>
-      <span>操作</span>
-    </header>
-
     <div v-if="loading && rows.length === 0" class="state">数据加载中...</div>
     <div v-else-if="rows.length === 0" class="state">暂无满足条件的数据</div>
 
-    <div v-else ref="containerRef" class="table-body">
-      <div class="table-inner" :style="{ height: `${rowVirtualizer.getTotalSize()}px` }">
-        <article
-          v-for="virtualRow in virtualItems"
-          :key="String(virtualRow.key)"
-          class="table-row"
-          :style="{ transform: `translateY(${virtualRow.start}px)` }"
-        >
-          <template v-if="rows[virtualRow.index]">
-            <button type="button" class="symbol-link" @click="emit('openDetail', rows[virtualRow.index])">
-              {{ rows[virtualRow.index].symbol }}
-            </button>
+    <div v-else class="table-scroll" role="region" aria-label="套利扫描结果">
+      <table class="board-table">
+        <thead>
+          <tr>
+            <th class="col-symbol">币对</th>
+            <th class="col-settlement">资金费率 / 结算信息</th>
+            <th class="col-score">统一指标</th>
+            <th class="col-sim">保证金模拟（到下一次同结算）</th>
+            <th class="col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in rows" :key="row.id" class="table-row">
+            <td class="symbol-cell col-symbol">
+              <button type="button" class="symbol-link" @click="emit('openDetail', row)">{{ row.symbol }}</button>
+              <p class="pair-hint">多 {{ row.longExchange }} / 空 {{ row.shortExchange }}</p>
+            </td>
 
-            <div>{{ rows[virtualRow.index].longExchange }} -> {{ rows[virtualRow.index].shortExchange }}</div>
+            <td class="settlement-cell col-settlement">
+              <div class="leg-group">
+                <p>
+                  <strong>多 {{ row.longLeg.exchange }}</strong>
+                  <span :class="colorClass(row.longLeg.fundingRateRaw)">{{ formatPercent(row.longLeg.fundingRateRaw, 4) }}</span>
+                  <span>{{ row.longLeg.settlementInterval }}</span>
+                  <span>{{ formatTime(row.longLeg.nextFundingTime) }}</span>
+                </p>
+                <p>
+                  <strong>空 {{ row.shortLeg.exchange }}</strong>
+                  <span :class="colorClass(row.shortLeg.fundingRateRaw)">{{ formatPercent(row.shortLeg.fundingRateRaw, 4) }}</span>
+                  <span>{{ row.shortLeg.settlementInterval }}</span>
+                  <span>{{ formatTime(row.shortLeg.nextFundingTime) }}</span>
+                </p>
+              </div>
 
-            <div class="funding-cell">
-              <span :class="colorClass(rows[virtualRow.index].longLeg.fundingRateRaw)">
-                L {{ formatPercent(rows[virtualRow.index].longLeg.fundingRateRaw, 4) }}
-              </span>
-              <span :class="colorClass(rows[virtualRow.index].shortLeg.fundingRateRaw)">
-                S {{ formatPercent(rows[virtualRow.index].shortLeg.fundingRateRaw, 4) }}
-              </span>
-            </div>
+              <div class="settlement-summary">
+                <p>
+                  下一次同结算: {{ nextSettlementText(row, rowEvents(row)) }} |
+                  单边结算 {{ singleSideCount(row, rowEvents(row)) }} 次
+                </p>
+                <p class="hint">{{ singleSideBrief(rowEvents(row)) }}</p>
+              </div>
 
-            <div class="interval-cell">
-              <span>L {{ rows[virtualRow.index].longLeg.settlementInterval }}</span>
-              <span>S {{ rows[virtualRow.index].shortLeg.settlementInterval }}</span>
-              <span v-if="rows[virtualRow.index].intervalMismatch" class="hint warn">
-                间隔不一致，短间隔: {{ shorterSideText(rows[virtualRow.index].shorterIntervalSide) }}
-              </span>
-            </div>
+              <details v-if="singleSideCount(row, rowEvents(row)) > 0" class="event-details">
+                <summary>展开逐次结算事件</summary>
+                <ul>
+                  <li v-for="event in rowEvents(row)" :key="event.id">
+                    <span>{{ formatTime(event.eventTime) }} {{ eventTitle(event) }}</span>
+                    <strong :class="colorClass(event.amountRate)">{{ formatPercent(event.amountRate, 4) }}</strong>
+                  </li>
+                </ul>
+              </details>
+            </td>
 
-            <div>
-              <span :class="colorClass(rows[virtualRow.index].spreadRate1h)">1h {{ formatPercent(rows[virtualRow.index].spreadRate1h, 4) }}</span>
-              <span :class="colorClass(rows[virtualRow.index].spreadRate8h)"> | 8h {{ formatPercent(rows[virtualRow.index].spreadRate8h, 4) }}</span>
-              <span class="strong" :class="colorClass(rows[virtualRow.index].spreadRate1yNominal)">
-                | 年化 {{ formatPercent(rows[virtualRow.index].spreadRate1yNominal, 2) }}
-              </span>
-            </div>
+            <td class="score-cell col-score">
+              <p class="score-main" :class="colorClass(row.nextCycleScore)">
+                {{ formatPercent(row.nextCycleScore, 2) }}
+              </p>
+              <p class="hint">未杠杆参考 {{ formatPercent(row.nextCycleScoreUnleveraged, 2) }}</p>
+              <p class="hint">可用杠杆 {{ formatLeverage(row.maxUsableLeverage) }}</p>
+            </td>
 
-            <div class="strong" :class="colorClass(rows[virtualRow.index].leveragedSpreadRate1yNominal)">
-              <div>{{ formatPercent(rows[virtualRow.index].leveragedSpreadRate1yNominal, 2) }}</div>
-              <div class="leverage">杠杆 {{ formatLeverage(rows[virtualRow.index].maxUsableLeverage) }}</div>
-            </div>
-
-            <div class="sim-cell">
+            <td class="sim-cell col-sim">
               <label class="sim-input-wrap">
                 <span>保证金(USDT)</span>
                 <input
@@ -125,41 +164,38 @@ function onMarginInput(rowId: string, event: Event): void {
                   min="0"
                   step="10"
                   placeholder="输入保证金"
-                  :value="marginInputs[rows[virtualRow.index].id] ?? ''"
-                  @input="onMarginInput(rows[virtualRow.index].id, $event)"
+                  :value="marginInputs[row.id] ?? ''"
+                  @input="onMarginInput(row.id, $event)"
                 />
               </label>
-              <div v-if="simulations[rows[virtualRow.index].id]" class="sim-result">
-                <span class="strong" :class="colorClass(simulations[rows[virtualRow.index].id]!.expectedPnlUsd)">
-                  ≈ {{ formatMoney(simulations[rows[virtualRow.index].id]!.expectedPnlUsd) }}
-                </span>
-                <span class="hint">
-                  名义仓位 {{ formatMoney(simulations[rows[virtualRow.index].id]!.notionalUsd) }} ({{ formatLeverage(simulations[rows[virtualRow.index].id]!.leverage) }})
-                </span>
-                <span
-                  class="hint"
-                  :class="simulations[rows[virtualRow.index].id]!.intervalMismatch ? 'warn' : ''"
-                >
-                  {{
-                    simulations[rows[virtualRow.index].id]!.intervalMismatch
-                      ? `短间隔单边 ${shorterSideText(simulations[rows[virtualRow.index].id]!.shorterIntervalSide)}: ${formatPercent(
-                          simulations[rows[virtualRow.index].id]!.singleSideRate,
-                          4
-                        )}`
-                      : `纯对冲收益: ${formatPercent(simulations[rows[virtualRow.index].id]!.hedgedRate, 4)}`
-                  }}
-                </span>
-              </div>
-              <span v-else class="hint">输入保证金后显示 24h 预期收益</span>
-            </div>
 
-            <div class="actions">
-              <button type="button" class="ghost" @click="emit('openPair', rows[virtualRow.index])">打开双交易所</button>
-              <button type="button" class="accent" @click="emit('openTrade', rows[virtualRow.index])">去交易</button>
-            </div>
-          </template>
-        </article>
-      </div>
+              <div v-if="simulations[row.id]" class="sim-result">
+                <p class="score-main" :class="colorClass(simulations[row.id]!.expectedPnlUsd)">≈ {{ formatMoney(simulations[row.id]!.expectedPnlUsd) }}</p>
+                <p class="hint">名义仓位 {{ formatMoney(simulations[row.id]!.notionalUsd) }} ({{ formatLeverage(simulations[row.id]!.leverage) }})</p>
+                <p class="hint">单边结算 {{ simulations[row.id]!.singleSideEventCount }} 次</p>
+
+                <details class="event-details">
+                  <summary>展开逐次金额明细</summary>
+                  <ul>
+                    <li v-for="(event, index) in simulations[row.id]!.events" :key="event.id">
+                      <span>{{ formatTime(event.eventTime) }} {{ simulationEventTitle(simulations[row.id]!, index) }}</span>
+                      <strong :class="colorClass(event.pnlUsd)">
+                        {{ formatMoney(event.pnlUsd) }} ({{ formatPercent(event.amountRate, 4) }})
+                      </strong>
+                    </li>
+                  </ul>
+                </details>
+              </div>
+              <p v-else class="hint">输入保证金后按结算事件窗口模拟</p>
+            </td>
+
+            <td class="actions col-actions">
+              <button type="button" class="ghost" @click="emit('openPair', row)">打开双交易所</button>
+              <button type="button" class="accent" @click="emit('openTrade', row)">去交易</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
 </template>
@@ -168,49 +204,59 @@ function onMarginInput(rowId: string, event: Event): void {
 .table-shell {
   border: 1px solid var(--line-strong);
   background: var(--panel-bg);
-  min-height: 460px;
-  display: grid;
-  grid-template-rows: auto 1fr;
 }
 
-.table-head {
-  display: grid;
-  grid-template-columns: 110px 150px 180px 180px 270px 140px 260px 200px;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line-soft);
-  color: var(--text-dim);
-  font-size: 12px;
-  background: #0e141f;
-}
-
-.table-body {
-  height: calc(100vh - 340px);
-  min-height: 360px;
+.table-scroll {
   overflow: auto;
+  max-height: clamp(460px, 72vh, 980px);
 }
 
-.table-inner {
-  position: relative;
-  width: 100%;
+.board-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: max-content;
 }
 
-.table-row {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 108px;
-  padding: 8px 12px;
-  display: grid;
-  align-items: center;
-  grid-template-columns: 110px 150px 180px 180px 270px 140px 260px 200px;
-  gap: 10px;
+.board-table th,
+.board-table td {
   border-bottom: 1px solid var(--line-soft);
+  padding: 10px 12px;
   font-size: 12px;
+  vertical-align: top;
+}
+
+.board-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #0e141f;
+  color: var(--text-dim);
+  text-align: left;
+  white-space: nowrap;
 }
 
 .table-row:hover {
   background: rgba(0, 199, 166, 0.05);
+}
+
+.col-symbol {
+  min-width: 150px;
+}
+
+.col-settlement {
+  min-width: 420px;
+}
+
+.col-score {
+  min-width: 180px;
+}
+
+.col-sim {
+  min-width: 360px;
+}
+
+.col-actions {
+  min-width: 190px;
 }
 
 .symbol-link {
@@ -220,30 +266,60 @@ function onMarginInput(rowId: string, event: Event): void {
   font-weight: 700;
   text-align: left;
   padding: 0;
+  font-size: 14px;
 }
 
 .symbol-link:hover {
   text-decoration: underline;
 }
 
-.funding-cell {
-  display: grid;
-  gap: 3px;
+.pair-hint {
+  margin: 6px 0 0;
+  color: var(--text-dim);
 }
 
-.interval-cell {
-  display: grid;
-  gap: 3px;
-}
-
-.sim-cell {
+.leg-group {
   display: grid;
   gap: 4px;
 }
 
-.sim-input-wrap {
+.leg-group p {
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settlement-summary {
+  margin-top: 8px;
   display: grid;
   gap: 2px;
+}
+
+.settlement-summary p {
+  margin: 0;
+}
+
+.score-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.score-main {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.sim-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.sim-input-wrap {
+  display: grid;
+  gap: 4px;
 }
 
 .sim-input-wrap span {
@@ -254,7 +330,7 @@ function onMarginInput(rowId: string, event: Event): void {
 .sim-input-wrap input {
   border: 1px solid var(--line-soft);
   border-radius: 4px;
-  height: 28px;
+  height: 30px;
   background: #101722;
   color: var(--text-main);
   padding: 0 8px;
@@ -267,20 +343,41 @@ function onMarginInput(rowId: string, event: Event): void {
 
 .sim-result {
   display: grid;
-  gap: 2px;
+  gap: 3px;
+}
+
+.event-details {
+  margin-top: 2px;
+}
+
+.event-details summary {
+  cursor: pointer;
+  color: var(--accent-soft);
+  font-size: 11px;
+}
+
+.event-details ul {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.event-details li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-dim);
 }
 
 .hint {
+  margin: 0;
   color: var(--text-dim);
   font-size: 11px;
 }
 
-.hint.warn {
-  color: #ffb9b9;
-}
-
 .actions {
-  display: flex;
+  display: grid;
   gap: 8px;
 }
 
@@ -305,16 +402,6 @@ function onMarginInput(rowId: string, event: Event): void {
   color: var(--text-dim);
   font-size: 13px;
   padding: 16px;
-}
-
-.strong {
-  font-weight: 700;
-}
-
-.leverage {
-  color: var(--text-dim);
-  font-size: 11px;
-  margin-top: 2px;
 }
 
 .positive {

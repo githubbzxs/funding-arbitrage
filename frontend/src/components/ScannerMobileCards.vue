@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { MarginSimulation, OpportunityBoardRow } from '../types/market';
-import { formatLeverage, formatMoney, formatPercent } from '../utils/format';
+import type { MarginSimulation, OpportunityBoardRow, SettlementEventPreview } from '../types/market';
+import { formatLeverage, formatMoney, formatPercent, formatTime } from '../utils/format';
+import { resolveNextSettlementTime, resolveSingleSideEventCount } from '../utils/marginSim';
 
 const props = defineProps<{
   rows: OpportunityBoardRow[];
   loading: boolean;
   marginInputs: Record<string, string>;
+  settlementEventsByRowId: Record<string, SettlementEventPreview[]>;
   simulations: Record<string, MarginSimulation | null>;
 }>();
 
@@ -54,19 +56,41 @@ function colorClass(value: number | null): string {
   return value >= 0 ? 'positive' : 'negative';
 }
 
-function shorterSideText(side: 'long' | 'short' | null): string {
+function sideText(side: 'long' | 'short' | null): string {
   if (side === 'long') {
     return '多腿';
   }
   if (side === 'short') {
     return '空腿';
   }
-  return '-';
+  return '未知';
 }
 
 function onMarginInput(rowId: string, event: Event): void {
   const target = event.target as HTMLInputElement;
   emit('updateMargin', { rowId, value: target.value });
+}
+
+function rowEvents(row: OpportunityBoardRow): SettlementEventPreview[] {
+  return props.settlementEventsByRowId[row.id] ?? [];
+}
+
+function singleSideCount(row: OpportunityBoardRow, events: SettlementEventPreview[]): number {
+  return resolveSingleSideEventCount(row, events);
+}
+
+function nextSettlementText(row: OpportunityBoardRow, events: SettlementEventPreview[]): string {
+  return formatTime(resolveNextSettlementTime(row, events));
+}
+
+function eventTitle(event: SettlementEventPreview): string {
+  if (event.kind === 'single_side') {
+    return `${sideText(event.side)}单边`;
+  }
+  if (event.kind === 'hedged') {
+    return '同结算';
+  }
+  return '结算事件';
 }
 </script>
 
@@ -78,45 +102,50 @@ function onMarginInput(rowId: string, event: Event): void {
     <article v-for="row in pageRows" :key="row.id" class="card">
       <header>
         <button type="button" class="symbol" @click="emit('openDetail', row)">{{ row.symbol }}</button>
-        <p>{{ row.longExchange }} -> {{ row.shortExchange }}</p>
+        <p>多 {{ row.longExchange }} / 空 {{ row.shortExchange }}</p>
       </header>
 
-      <div class="metrics">
-        <div>
-          <span>多腿费率(原始)</span>
-          <strong :class="colorClass(row.longLeg.fundingRateRaw)">{{ formatPercent(row.longLeg.fundingRateRaw, 4) }}</strong>
+      <section class="metric-panel">
+        <div class="line">
+          <span>统一指标(含杠杆)</span>
+          <strong :class="colorClass(row.nextCycleScore)">{{ formatPercent(row.nextCycleScore, 2) }}</strong>
         </div>
-        <div>
-          <span>空腿费率(原始)</span>
-          <strong :class="colorClass(row.shortLeg.fundingRateRaw)">{{ formatPercent(row.shortLeg.fundingRateRaw, 4) }}</strong>
+        <div class="line">
+          <span>未杠杆参考</span>
+          <strong :class="colorClass(row.nextCycleScoreUnleveraged)">{{ formatPercent(row.nextCycleScoreUnleveraged, 2) }}</strong>
         </div>
-        <div>
-          <span>多腿结算间隔</span>
-          <strong>{{ row.longLeg.settlementInterval }}</strong>
-        </div>
-        <div>
-          <span>空腿结算间隔</span>
-          <strong>{{ row.shortLeg.settlementInterval }}</strong>
-        </div>
-        <div>
-          <span>价差年化</span>
-          <strong :class="colorClass(row.spreadRate1yNominal)">{{ formatPercent(row.spreadRate1yNominal, 2) }}</strong>
-        </div>
-        <div>
-          <span>杠杆后年化</span>
-          <strong :class="colorClass(row.leveragedSpreadRate1yNominal)">{{ formatPercent(row.leveragedSpreadRate1yNominal, 2) }}</strong>
-        </div>
-        <div>
+        <div class="line">
           <span>可用杠杆</span>
           <strong>{{ formatLeverage(row.maxUsableLeverage) }}</strong>
         </div>
-      </div>
+      </section>
 
-      <p v-if="row.intervalMismatch" class="interval-warn">间隔不一致，短间隔: {{ shorterSideText(row.shorterIntervalSide) }}</p>
+      <section class="settlement-panel">
+        <p>
+          多 {{ row.longLeg.exchange }}: {{ formatPercent(row.longLeg.fundingRateRaw, 4) }} · {{ row.longLeg.settlementInterval }} ·
+          {{ formatTime(row.longLeg.nextFundingTime) }}
+        </p>
+        <p>
+          空 {{ row.shortLeg.exchange }}: {{ formatPercent(row.shortLeg.fundingRateRaw, 4) }} · {{ row.shortLeg.settlementInterval }} ·
+          {{ formatTime(row.shortLeg.nextFundingTime) }}
+        </p>
+        <p class="hint">下一次同结算: {{ nextSettlementText(row, rowEvents(row)) }}</p>
+        <p class="hint">单边结算次数: {{ singleSideCount(row, rowEvents(row)) }}</p>
+
+        <details v-if="singleSideCount(row, rowEvents(row)) > 0" class="event-details">
+          <summary>展开逐次事件摘要</summary>
+          <ul>
+            <li v-for="event in rowEvents(row)" :key="event.id">
+              <span>{{ formatTime(event.eventTime) }} {{ eventTitle(event) }}</span>
+              <strong :class="colorClass(event.amountRate)">{{ formatPercent(event.amountRate, 4) }}</strong>
+            </li>
+          </ul>
+        </details>
+      </section>
 
       <section class="sim-panel">
         <label>
-          <span>保证金模拟(24h)</span>
+          <span>保证金模拟（到下一次同结算）</span>
           <input
             type="number"
             min="0"
@@ -129,13 +158,19 @@ function onMarginInput(rowId: string, event: Event): void {
         <div v-if="simulations[row.id]" class="sim-result">
           <strong :class="colorClass(simulations[row.id]!.expectedPnlUsd)">≈ {{ formatMoney(simulations[row.id]!.expectedPnlUsd) }}</strong>
           <p>名义仓位 {{ formatMoney(simulations[row.id]!.notionalUsd) }} ({{ formatLeverage(simulations[row.id]!.leverage) }})</p>
-          <p v-if="simulations[row.id]!.intervalMismatch" class="interval-warn">
-            短间隔单边 {{ shorterSideText(simulations[row.id]!.shorterIntervalSide) }}:
-            {{ formatPercent(simulations[row.id]!.singleSideRate, 4) }}
-          </p>
-          <p v-else>纯对冲收益: {{ formatPercent(simulations[row.id]!.hedgedRate, 4) }}</p>
+          <p>单边结算 {{ simulations[row.id]!.singleSideEventCount }} 次</p>
+
+          <details class="event-details">
+            <summary>展开逐次金额明细</summary>
+            <ul>
+              <li v-for="event in simulations[row.id]!.events" :key="event.id">
+                <span>{{ formatTime(event.eventTime) }} {{ event.summary }}</span>
+                <strong :class="colorClass(event.pnlUsd)">{{ formatMoney(event.pnlUsd) }} ({{ formatPercent(event.amountRate, 4) }})</strong>
+              </li>
+            </ul>
+          </details>
         </div>
-        <p v-else>输入保证金后显示 24h 预期收益</p>
+        <p v-else>输入保证金后按结算事件窗口模拟</p>
       </section>
 
       <div class="actions">
@@ -196,41 +231,32 @@ header p {
   padding: 0;
 }
 
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.metrics div {
-  border: 1px solid var(--line-soft);
-  background: #0d141f;
-  padding: 8px;
-  display: grid;
-  gap: 4px;
-}
-
-.metrics span {
-  color: var(--text-dim);
-  font-size: 11px;
-}
-
-.metrics strong {
-  font-size: 13px;
-}
-
-.interval-warn {
-  margin: 0;
-  color: #ffb8b8;
-  font-size: 11px;
-}
-
+.metric-panel,
+.settlement-panel,
 .sim-panel {
   border: 1px solid var(--line-soft);
   background: #0d141f;
   padding: 8px;
   display: grid;
   gap: 6px;
+}
+
+.line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.line span {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.settlement-panel p,
+.sim-panel p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .sim-panel label {
@@ -257,15 +283,28 @@ header p {
   border-color: var(--accent);
 }
 
-.sim-panel p {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
 .sim-result {
   display: grid;
   gap: 4px;
+}
+
+.event-details summary {
+  cursor: pointer;
+  color: var(--accent-soft);
+  font-size: 11px;
+}
+
+.event-details ul {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.event-details li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .actions {
@@ -301,6 +340,10 @@ header p {
 
 .ghost:disabled {
   opacity: 0.65;
+}
+
+.hint {
+  color: var(--text-dim);
 }
 
 .positive {

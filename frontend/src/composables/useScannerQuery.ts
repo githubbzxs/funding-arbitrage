@@ -5,7 +5,7 @@ import type { MarketBoardResult } from '../types/market';
 
 type UseScannerQueryOptions = {
   limit: Ref<number>;
-  minSpreadRate1yNominal: Ref<number>;
+  minNextCycleScore: Ref<number>;
   exchanges: Ref<string[]>;
   symbol: Ref<string>;
   autoRefresh: Ref<boolean>;
@@ -27,7 +27,7 @@ export function useScannerQuery(options: UseScannerQueryOptions) {
       queryKey: [
         'market-board',
         options.limit.value,
-        options.minSpreadRate1yNominal.value,
+        options.minNextCycleScore.value,
         options.symbol.value.trim().toUpperCase(),
         normalizedExchanges(options.exchanges.value).join(',')
       ] as const,
@@ -38,7 +38,7 @@ export function useScannerQuery(options: UseScannerQueryOptions) {
         }
         return fetchBoard({
           limit: options.limit.value,
-          minSpreadRate1yNominal: options.minSpreadRate1yNominal.value,
+          minNextCycleScore: options.minNextCycleScore.value,
           symbol: options.symbol.value.trim() || undefined,
           exchanges: normalizedExchanges(options.exchanges.value),
           forceRefresh: shouldForceRefresh

@@ -1,4 +1,19 @@
 export type SupportedExchange = 'binance' | 'okx' | 'bybit' | 'bitget' | 'gateio';
+export type OpportunityLegSide = 'long' | 'short';
+export type SettlementEventKind = 'hedged' | 'single_side' | 'unknown';
+
+export interface SettlementEventPreview {
+  id: string;
+  eventTime: string;
+  kind: SettlementEventKind;
+  side: OpportunityLegSide | null;
+  amountRate: number | null;
+  hedgedRate: number | null;
+  singleSideRate: number | null;
+  longRateRaw: number | null;
+  shortRateRaw: number | null;
+  summary: string;
+}
 
 export interface OpportunityBoardLeg {
   exchange: string;
@@ -28,24 +43,40 @@ export interface OpportunityBoardRow {
   spreadRate8h: number | null;
   spreadRate1yNominal: number;
   leveragedSpreadRate1yNominal: number | null;
+  nextCycleScore: number | null;
+  nextCycleScoreUnleveraged: number | null;
+  nextSettlementTime: string;
+  settlementEventsPreview: SettlementEventPreview[];
+  singleSideEventCount: number;
   maxUsableLeverage: number | null;
+}
+
+export interface MarginSimulationEvent {
+  id: string;
+  eventTime: string;
+  kind: SettlementEventKind;
+  side: OpportunityLegSide | null;
+  amountRate: number;
+  pnlUsd: number;
+  summary: string;
 }
 
 export interface MarginSimulation {
   marginUsd: number;
   leverage: number;
   notionalUsd: number;
-  horizonHours: number;
-  longIntervalHours: number;
-  shortIntervalHours: number;
-  longEvents: number;
-  shortEvents: number;
+  eventCount: number;
+  singleSideEventCount: number;
   hedgedRate: number;
   singleSideRate: number;
   totalRate: number;
   expectedPnlUsd: number;
   intervalMismatch: boolean;
   shorterIntervalSide: 'long' | 'short' | null;
+  nextSettlementTime: string;
+  windowStartTime: string;
+  windowEndTime: string;
+  events: MarginSimulationEvent[];
 }
 
 export interface MarketFetchError {
@@ -72,6 +103,7 @@ export interface MarketBoardResult {
 
 export interface BoardQuery {
   limit?: number;
+  minNextCycleScore?: number;
   minSpreadRate1yNominal?: number;
   forceRefresh?: boolean;
   exchanges?: string[];

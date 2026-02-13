@@ -123,3 +123,8 @@
   - Why：修复筛选体验与 Gate.io 间歇缺失，且把不同收费间隔下的真实收益结构直观展示出来。
   - Impact：`backend/app/exchanges/providers/ccxt_market.py`，`backend/app/services/market_board.py`，`backend/app/models/schemas.py`，`backend/tests/test_gateio_fallback.py`，`backend/tests/test_market_board.py`，`frontend/src/api/market.ts`，`frontend/src/types/market.ts`，`frontend/src/utils/marginSim.ts`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/components/ScannerTableVirtual.vue`，`frontend/src/components/ScannerMobileCards.vue`
   - Verify：`cd backend && pytest -q`，`cd frontend && npm run test`，`cd frontend && npm run build`
+
+- **[2026-02-13] 扫描页统一指标切换为“下一次同结算窗口”并修复桌面比例**：后端新增 `next_cycle_score`、`next_sync_settlement_time` 与结算事件预览；前端移除“套利方向”，将“资金费率+结算间隔+下次结算”合并展示，并将保证金模拟改为按同一事件列表逐次计算。
+  - Why：解决“页面撑开后信息看不全”与“多指标口径分散”问题，把不同结算间隔下的单边机会和每次金额统一到可对比口径。
+  - Impact：`backend/app/api/market.py`，`backend/app/models/schemas.py`，`backend/app/services/market_board.py`，`backend/tests/test_market_board.py`，`frontend/src/api/market.ts`，`frontend/src/types/market.ts`，`frontend/src/utils/marginSim.ts`，`frontend/src/utils/marginSim.test.ts`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/components/ScannerToolbar.vue`，`frontend/src/components/ScannerTableVirtual.vue`，`frontend/src/components/ScannerMobileCards.vue`，`frontend/src/pages/PairDetailPage.vue`，`frontend/src/composables/useScannerQuery.ts`
+  - Verify：`cd backend && pytest -q`，`cd frontend && npm run test`，`cd frontend && npm run build`
