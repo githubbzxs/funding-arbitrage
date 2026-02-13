@@ -85,6 +85,14 @@ docker compose up -d --build
 
 ## 托管凭据接口
 
+推荐使用新路由：
+
+- `GET /api/config/credentials`
+- `PUT /api/config/credentials/{exchange}`
+- `DELETE /api/config/credentials/{exchange}`
+
+兼容旧路由（保留）：
+
 - `GET /api/credentials`
 - `PUT /api/credentials/{exchange}`
 - `DELETE /api/credentials/{exchange}`

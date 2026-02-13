@@ -78,3 +78,18 @@
   - Why：避免因单所临时无数据导致筛选缺项，并减少无效筛选维度。
   - Impact：`frontend/src/App.vue`，`frontend/src/components/TopFilters.vue`，`frontend/src/components/BottomToolbar.vue`
   - Verify：前端页面手动检查筛选栏与底部工具栏选项。
+
+- **[2026-02-13] 行情抓取切换为 ccxt 统一 provider 并增加接口元信息**：5 所行情统一走 `CcxtMarketProvider`，`/api/market/snapshots` 增加 `meta`（耗时/缓存命中/成功失败交易所）。
+  - Why：降低多实现维护成本，并提升抓取链路可观测性。
+  - Impact：`backend/app/exchanges/providers/ccxt_market.py`，`backend/app/services/market_data.py`，`backend/app/models/schemas.py`
+  - Verify：`cd backend && pytest -q`；调用 `GET /api/market/snapshots` 检查 `meta` 字段。
+
+- **[2026-02-13] 前端拆分为三页路由并修复双交易所跳转**：新增 `/` 行情页、`/trade` 交易页、`/settings/api` 凭据页、`/trade/redirect` 中转页；币对点击经中转页一键打开双交易所。
+  - Why：降低单页信息密度，修复“只打开一个交易所”问题并提升可操作性。
+  - Impact：`frontend/src/router.ts`，`frontend/src/pages/MarketPage.vue`，`frontend/src/pages/TradePage.vue`，`frontend/src/pages/ApiSettingsPage.vue`，`frontend/src/pages/TradeRedirectPage.vue`
+  - Verify：`cd frontend && npm run build`；手动点击币对验证中转页与双链接。
+
+- **[2026-02-13] 移除前端 OI/成交额阈值筛选与主表冗余展示**：主表去掉未平仓合约和交易量展示，筛选仅保留交易所维度。
+  - Why：聚焦套利决策核心指标，减少信息噪音。
+  - Impact：`frontend/src/components/TopFilters.vue`，`frontend/src/components/MarketTable.vue`，`frontend/src/types/market.ts`
+  - Verify：前端页面确认无 OI/成交额阈值输入且主表不显示 OI/交易量。
