@@ -17,16 +17,51 @@ export interface MarketRow {
   longExchange?: string;
   shortExchange?: string;
   spreadRate1yNominal?: number;
+  spreadRate8h?: number | null;
+  spreadRate1h?: number | null;
   longMaxLeverage?: number | null;
   shortMaxLeverage?: number | null;
   maxUsableLeverage?: number | null;
+  longRate8h?: number | null;
+  shortRate8h?: number | null;
+  longFundingRateRaw?: number | null;
+  shortFundingRateRaw?: number | null;
+  longNextFundingTime?: string;
+  shortNextFundingTime?: string;
 }
 
 export interface FilterState {
   oiThreshold: number;
   volumeThreshold: number;
-  intervals: string[];
   exchanges: string[];
+}
+
+export interface OpportunityLegInfo {
+  exchange: string;
+  openInterestUsd: number | null;
+  volume24hUsd: number | null;
+  fundingRateRaw: number | null;
+  fundingRate1h: number | null;
+  fundingRate8h: number | null;
+  fundingRate1y: number | null;
+  nextFundingTime: string;
+  settlementInterval: string;
+  maxLeverage: number | null;
+  leveragedNominalApr: number | null;
+}
+
+export interface OpportunityPairRow {
+  id: string;
+  symbol: string;
+  longExchange: string;
+  shortExchange: string;
+  longLeg: OpportunityLegInfo;
+  shortLeg: OpportunityLegInfo;
+  spreadRate1h: number | null;
+  spreadRate8h: number | null;
+  spreadRate1yNominal: number;
+  leveragedSpreadRate1yNominal: number | null;
+  rawOpportunity: MarketRow;
 }
 
 export type ExecutionAction = 'preview' | 'open' | 'close' | 'hedge' | 'emergency-close';

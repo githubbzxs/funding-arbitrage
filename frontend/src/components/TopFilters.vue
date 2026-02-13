@@ -5,7 +5,6 @@ import type { FilterState } from '../types/market';
 const props = defineProps<{
   modelValue: FilterState;
   exchangeOptions: string[];
-  intervalOptions: string[];
   updatedAt: string;
 }>();
 
@@ -41,19 +40,11 @@ function toggleExchange(exchange: string): void {
   });
 }
 
-function toggleInterval(interval: string): void {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    intervals: toggleFromList(props.modelValue.intervals, interval)
-  });
-}
-
 function resetFilters(): void {
   emit('update:modelValue', {
     oiThreshold: 0,
     volumeThreshold: 0,
-    exchanges: [],
-    intervals: []
+    exchanges: []
   });
 }
 
@@ -86,22 +77,6 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
           @input="onNumberChange($event, 'volumeThreshold')"
         />
       </label>
-
-      <div class="field wide">
-        <span>结算间隔筛选</span>
-        <div class="chip-list">
-          <button
-            v-for="interval in intervalOptions"
-            :key="interval"
-            type="button"
-            class="chip"
-            :class="{ active: modelValue.intervals.includes(interval) }"
-            @click="toggleInterval(interval)"
-          >
-            {{ interval }}
-          </button>
-        </div>
-      </div>
 
       <div class="field wide">
         <span>交易所筛选</span>
@@ -139,7 +114,7 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
 
 .filters-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -155,7 +130,7 @@ function onNumberChange(event: Event, key: 'oiThreshold' | 'volumeThreshold'): v
 }
 
 .field.wide {
-  grid-column: span 2;
+  grid-column: span 1;
 }
 
 .field input {

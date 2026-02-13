@@ -6,7 +6,18 @@ import BottomToolbar from './components/BottomToolbar.vue';
 import MarketTable from './components/MarketTable.vue';
 import TopFilters from './components/TopFilters.vue';
 import TradeDrawer from './components/TradeDrawer.vue';
-import type { ExecutionAction, ExecutionRequest, FilterState, MarketRow, TradingRecord } from './types/market';
+import type {
+  ExecutionAction,
+  ExecutionRequest,
+  FilterState,
+  MarketRow,
+  OpportunityLegInfo,
+  OpportunityPairRow,
+  TradingRecord,
+} from './types/market';
+import { buildPairTradeUrls } from './utils/exchangeLinks';
+
+const EXCHANGE_OPTIONS = ['binance', 'okx', 'bybit', 'bitget', 'gateio'] as const;
 
 const marketLoading = ref(false);
 const tradeLoading = ref(false);
@@ -21,8 +32,7 @@ const orders = ref<TradingRecord[]>([]);
 const filters = reactive<FilterState>({
   oiThreshold: 0,
   volumeThreshold: 0,
-  intervals: [],
-  exchanges: []
+  exchanges: [],
 });
 
 const drawerOpen = ref(false);
@@ -34,87 +44,215 @@ const executionResult = ref('');
 
 const autoRefresh = ref(true);
 const refreshSeconds = ref(10);
-const language = ref<'zh-CN' | 'en-US'>('zh-CN');
 
 let timerId: number | undefined;
 
-function buildKey(row: MarketRow): string {
-  return `${row.exchange.toLowerCase()}::${row.symbol.toLowerCase()}::${row.source}`;
-}
-
-function rowScore(row: MarketRow): number {
-  const leveraged = row.leveragedNominalApr;
+function rowScore(row: OpportunityPairRow): number {
+  const leveraged = row.leveragedSpreadRate1yNominal;
   if (typeof leveraged === 'number' && Number.isFinite(leveraged)) {
     return leveraged;
   }
-  const base = row.nominalApr;
-  if (typeof base === 'number' && Number.isFinite(base)) {
-    return base;
+  if (Number.isFinite(row.spreadRate1yNominal)) {
+    return row.spreadRate1yNominal;
   }
   return Number.NEGATIVE_INFINITY;
 }
 
-const mergedRows = computed<MarketRow[]>(() => {
-  const mergedMap = new Map<string, MarketRow>();
+function buildSnapshotKey(exchange: string, symbol: string): string {
+  return `${exchange.toLowerCase()}::${symbol.toLowerCase()}`;
+}
 
+function normalizeExchange(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function annualizedFrom8h(rate8h: number | null): number | null {
+  if (typeof rate8h !== 'number' || !Number.isFinite(rate8h)) {
+    return null;
+  }
+  return rate8h * 3 * 365;
+}
+
+function resolveSpread1h(spreadRate8h: number | null): number | null {
+  if (typeof spreadRate8h !== 'number' || !Number.isFinite(spreadRate8h)) {
+    return null;
+  }
+  return spreadRate8h / 8;
+}
+
+function buildEmptyLeg(exchange: string): OpportunityLegInfo {
+  return {
+    exchange,
+    openInterestUsd: null,
+    volume24hUsd: null,
+    fundingRateRaw: null,
+    fundingRate1h: null,
+    fundingRate8h: null,
+    fundingRate1y: null,
+    nextFundingTime: '',
+    settlementInterval: '-',
+    maxLeverage: null,
+    leveragedNominalApr: null,
+  };
+}
+
+function buildLegInfo(
+  exchange: string,
+  symbol: string,
+  fallback: {
+    fundingRateRaw: number | null;
+    fundingRate8h: number | null;
+    nextFundingTime: string;
+    maxLeverage: number | null;
+  },
+  snapshotMap: Map<string, MarketRow>,
+): OpportunityLegInfo {
+  const snapshot = snapshotMap.get(buildSnapshotKey(exchange, symbol));
+  if (snapshot) {
+    return {
+      exchange,
+      openInterestUsd: Number.isFinite(snapshot.openInterestUsd) ? snapshot.openInterestUsd : null,
+      volume24hUsd: Number.isFinite(snapshot.volume24hUsd) ? snapshot.volume24hUsd : null,
+      fundingRateRaw: snapshot.nextFundingRate,
+      fundingRate1h: snapshot.fundingRate1h,
+      fundingRate8h: snapshot.fundingRate8h,
+      fundingRate1y: snapshot.fundingRate1y,
+      nextFundingTime: snapshot.nextFundingTime,
+      settlementInterval: snapshot.settlementInterval || '-',
+      maxLeverage: snapshot.maxLeverage,
+      leveragedNominalApr: snapshot.leveragedNominalApr,
+    };
+  }
+
+  const fundingRate1h = resolveSpread1h(fallback.fundingRate8h);
+  const fundingRate1y = annualizedFrom8h(fallback.fundingRate8h);
+  const leveragedNominalApr =
+    fundingRate1y !== null && fallback.maxLeverage !== null ? fundingRate1y * fallback.maxLeverage : null;
+
+  return {
+    ...buildEmptyLeg(exchange),
+    fundingRateRaw: fallback.fundingRateRaw,
+    fundingRate1h,
+    fundingRate8h: fallback.fundingRate8h,
+    fundingRate1y,
+    nextFundingTime: fallback.nextFundingTime,
+    maxLeverage: fallback.maxLeverage,
+    leveragedNominalApr,
+  };
+}
+
+const exchangeOptions = computed<string[]>(() => [...EXCHANGE_OPTIONS]);
+
+const snapshotIndex = computed(() => {
+  const index = new Map<string, MarketRow>();
   snapshots.value.forEach((row) => {
-    mergedMap.set(buildKey(row), row);
+    index.set(buildSnapshotKey(row.exchange, row.symbol), row);
   });
-  opportunities.value.forEach((row) => {
-    mergedMap.set(buildKey(row), row);
-  });
-
-  return [...mergedMap.values()].sort((a, b) => {
-    const left = rowScore(a);
-    const right = rowScore(b);
-    if (left === right) {
-      return 0;
-    }
-    return right > left ? 1 : -1;
-  });
+  return index;
 });
 
-const exchangeOptions = computed(() => {
-  const base = new Set<string>();
-  snapshots.value.forEach((row) => base.add(row.exchange));
-  return [...base].sort((a, b) => a.localeCompare(b));
+const opportunityPairs = computed<OpportunityPairRow[]>(() => {
+  return opportunities.value
+    .filter((row) => row.source === 'opportunity')
+    .map((row) => {
+      const defaultLong = row.exchange.split('/')[0] ?? '';
+      const defaultShort = row.exchange.split('/')[1] ?? '';
+      const longExchange = normalizeExchange(row.longExchange || defaultLong);
+      const shortExchange = normalizeExchange(row.shortExchange || defaultShort);
+
+      const longLeg = buildLegInfo(
+        longExchange,
+        row.symbol,
+        {
+          fundingRateRaw: row.longFundingRateRaw ?? null,
+          fundingRate8h: row.longRate8h ?? null,
+          nextFundingTime: row.longNextFundingTime || row.nextFundingTime,
+          maxLeverage: row.longMaxLeverage ?? row.maxUsableLeverage ?? null,
+        },
+        snapshotIndex.value,
+      );
+
+      const shortLeg = buildLegInfo(
+        shortExchange,
+        row.symbol,
+        {
+          fundingRateRaw: row.shortFundingRateRaw ?? null,
+          fundingRate8h: row.shortRate8h ?? null,
+          nextFundingTime: row.shortNextFundingTime || row.nextFundingTime,
+          maxLeverage: row.shortMaxLeverage ?? row.maxUsableLeverage ?? null,
+        },
+        snapshotIndex.value,
+      );
+
+      const spreadRate8h =
+        typeof longLeg.fundingRate8h === 'number' && typeof shortLeg.fundingRate8h === 'number'
+          ? shortLeg.fundingRate8h - longLeg.fundingRate8h
+          : row.spreadRate8h ?? row.fundingRate8h;
+
+      const spreadRate1h =
+        typeof longLeg.fundingRate1h === 'number' && typeof shortLeg.fundingRate1h === 'number'
+          ? shortLeg.fundingRate1h - longLeg.fundingRate1h
+          : row.spreadRate1h ?? row.fundingRate1h;
+
+      const spreadRate1yNominal = row.spreadRate1yNominal ?? row.nominalApr ?? row.fundingRate1y ?? 0;
+
+      const maxUsableLeverage =
+        row.maxUsableLeverage ??
+        (typeof longLeg.maxLeverage === 'number' && typeof shortLeg.maxLeverage === 'number'
+          ? Math.min(longLeg.maxLeverage, shortLeg.maxLeverage)
+          : null);
+
+      const leveragedSpreadRate1yNominal =
+        row.leveragedNominalApr ??
+        (typeof maxUsableLeverage === 'number' ? spreadRate1yNominal * maxUsableLeverage : null);
+
+      return {
+        id: row.id,
+        symbol: row.symbol,
+        longExchange,
+        shortExchange,
+        longLeg,
+        shortLeg,
+        spreadRate1h,
+        spreadRate8h,
+        spreadRate1yNominal,
+        leveragedSpreadRate1yNominal,
+        rawOpportunity: row,
+      };
+    })
+    .sort((a, b) => {
+      const left = rowScore(a);
+      const right = rowScore(b);
+      if (left === right) {
+        return 0;
+      }
+      return right > left ? 1 : -1;
+    });
 });
 
-const intervalOptions = computed(() => {
-  const values = new Set<string>();
-  snapshots.value.forEach((row) => {
-    if (row.settlementInterval) {
-      values.add(row.settlementInterval);
+const filteredRows = computed<OpportunityPairRow[]>(() =>
+  opportunityPairs.value.filter((row) => {
+    const longOi = row.longLeg.openInterestUsd ?? 0;
+    const shortOi = row.shortLeg.openInterestUsd ?? 0;
+    if (longOi < filters.oiThreshold || shortOi < filters.oiThreshold) {
+      return false;
     }
-  });
-  return values.size > 0 ? [...values].sort((a, b) => a.localeCompare(b)) : ['1h', '4h', '8h'];
-});
 
-const filteredRows = computed(() =>
-  mergedRows.value.filter((row) => {
-    if (row.openInterestUsd < filters.oiThreshold) {
+    const longVol = row.longLeg.volume24hUsd ?? 0;
+    const shortVol = row.shortLeg.volume24hUsd ?? 0;
+    if (longVol < filters.volumeThreshold || shortVol < filters.volumeThreshold) {
       return false;
     }
-    if (row.volume24hUsd < filters.volumeThreshold) {
-      return false;
-    }
-    if (filters.intervals.length > 0 && row.source === 'snapshot' && !filters.intervals.includes(row.settlementInterval)) {
-      return false;
-    }
+
     if (filters.exchanges.length > 0) {
-      if (row.source === 'snapshot' && !filters.exchanges.includes(row.exchange)) {
+      const selected = new Set(filters.exchanges.map((item) => item.toLowerCase()));
+      if (!selected.has(row.longExchange.toLowerCase()) && !selected.has(row.shortExchange.toLowerCase())) {
         return false;
       }
-      if (row.source === 'opportunity') {
-        const longOk = row.longExchange ? filters.exchanges.includes(row.longExchange) : false;
-        const shortOk = row.shortExchange ? filters.exchanges.includes(row.shortExchange) : false;
-        if (!longOk && !shortOk) {
-          return false;
-        }
-      }
     }
+
     return true;
-  })
+  }),
 );
 
 function clearTimer(): void {
@@ -141,7 +279,7 @@ async function refreshMarketData(): Promise<void> {
     const [snapshotRows, opportunityRows] = await Promise.all([fetchSnapshots(), fetchOpportunities()]);
     snapshots.value = snapshotRows;
     opportunities.value = opportunityRows;
-    lastUpdated.value = new Date().toLocaleString(language.value);
+    lastUpdated.value = new Date().toLocaleString('zh-CN');
   } catch (error) {
     marketError.value = error instanceof Error ? error.message : '拉取市场数据失败';
   } finally {
@@ -184,12 +322,28 @@ function closeDrawer(): void {
 function onFilterChange(nextFilters: FilterState): void {
   filters.oiThreshold = nextFilters.oiThreshold;
   filters.volumeThreshold = nextFilters.volumeThreshold;
-  filters.intervals = nextFilters.intervals;
   filters.exchanges = nextFilters.exchanges;
 }
 
-function onLanguageUpdate(value: string): void {
-  language.value = value === 'en-US' ? 'en-US' : 'zh-CN';
+function openPairPages(row: OpportunityPairRow): void {
+  marketError.value = '';
+  const urls = buildPairTradeUrls(row.longExchange, row.shortExchange, row.symbol);
+  if (urls.length === 0) {
+    marketError.value = '未找到可用的交易所跳转链接';
+    return;
+  }
+
+  let blockedCount = 0;
+  urls.forEach((url) => {
+    const popup = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      blockedCount += 1;
+    }
+  });
+
+  if (blockedCount > 0) {
+    marketError.value = '浏览器拦截了新标签页，请允许本站弹窗后重试';
+  }
 }
 
 async function onExecute(request: ExecutionRequest): Promise<void> {
@@ -242,7 +396,6 @@ onBeforeUnmount(() => {
     <TopFilters
       :model-value="filters"
       :exchange-options="exchangeOptions"
-      :interval-options="intervalOptions"
       :updated-at="lastUpdated"
       @update:model-value="onFilterChange"
       @refresh="refreshAll"
@@ -255,6 +408,7 @@ onBeforeUnmount(() => {
       :loading="marketLoading"
       @preview="openDrawer('preview', $event)"
       @open="openDrawer('open', $event)"
+      @visit-symbol="openPairPages"
     />
   </div>
 
@@ -275,10 +429,8 @@ onBeforeUnmount(() => {
   <BottomToolbar
     :auto-refresh="autoRefresh"
     :refresh-seconds="refreshSeconds"
-    :language="language"
     @update:auto-refresh="autoRefresh = $event"
     @update:refresh-seconds="refreshSeconds = $event"
-    @update:language="onLanguageUpdate"
     @refresh="refreshAll"
   />
 

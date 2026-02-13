@@ -116,6 +116,8 @@ function buildOpportunityRow(raw: GenericObject): MarketRow {
   const spreadNominal = readNumber(raw, ['spread_rate_1y_nominal', 'spreadRate1yNominal'], 0);
   const longExchange = readString(raw, ['long_exchange', 'longExchange'], '');
   const shortExchange = readString(raw, ['short_exchange', 'shortExchange'], '');
+  const longNextFundingTime = readString(raw, ['long_next_funding_time', 'longNextFundingTime']);
+  const shortNextFundingTime = readString(raw, ['short_next_funding_time', 'shortNextFundingTime']);
   const longMaxLeverage = readOptionalNumber(raw, ['long_max_leverage', 'longMaxLeverage']);
   const shortMaxLeverage = readOptionalNumber(raw, ['short_max_leverage', 'shortMaxLeverage']);
   const maxUsableApi = readOptionalNumber(raw, ['max_usable_leverage', 'maxUsableLeverage']);
@@ -140,9 +142,7 @@ function buildOpportunityRow(raw: GenericObject): MarketRow {
     fundingRate1h: rate1h,
     fundingRate8h: rate8h,
     fundingRate1y: spreadNominal,
-    nextFundingTime:
-      readString(raw, ['long_next_funding_time', 'longNextFundingTime']) ||
-      readString(raw, ['short_next_funding_time', 'shortNextFundingTime']),
+    nextFundingTime: longNextFundingTime || shortNextFundingTime,
     nextFundingRate,
     settlementInterval: '8h',
     maxLeverage: maxUsable,
@@ -152,9 +152,17 @@ function buildOpportunityRow(raw: GenericObject): MarketRow {
     longExchange,
     shortExchange,
     spreadRate1yNominal: spreadNominal,
+    spreadRate1h: rate1h,
+    spreadRate8h: rate8h,
     longMaxLeverage,
     shortMaxLeverage,
-    maxUsableLeverage: maxUsable
+    maxUsableLeverage: maxUsable,
+    longRate8h,
+    shortRate8h,
+    longFundingRateRaw: longFundingRaw,
+    shortFundingRateRaw: shortFundingRaw,
+    longNextFundingTime,
+    shortNextFundingTime
   };
 }
 

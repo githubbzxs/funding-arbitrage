@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import type { MarketRow } from '../types/market';
+import type { MarketRow, OpportunityPairRow } from '../types/market';
 import { formatLeverage, formatMoney, formatPercent, formatTime } from '../utils/format';
 
 defineProps<{
-  rows: MarketRow[];
+  rows: OpportunityPairRow[];
   loading: boolean;
 }>();
 
 defineEmits<{
   preview: [MarketRow];
   open: [MarketRow];
+  visitSymbol: [OpportunityPairRow];
 }>();
 
 function rateClass(value: number | null): string {
@@ -26,61 +27,93 @@ function rateClass(value: number | null): string {
       <table class="market-table">
         <thead>
           <tr>
-            <th>交易所</th>
             <th>币对</th>
-            <th>未平仓额</th>
-            <th>日成交额</th>
-            <th>1h</th>
-            <th>8h</th>
-            <th>1y</th>
-            <th>下次费率时间和值</th>
-            <th>结算间隔</th>
-            <th>最大杠杆</th>
-            <th>名义年化(杠杆后)</th>
+            <th>多腿详情</th>
+            <th>空腿详情</th>
+            <th>差值</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="12" class="empty-cell">数据加载中...</td>
+            <td colspan="5" class="empty-cell">数据加载中...</td>
           </tr>
           <tr v-else-if="rows.length === 0">
-            <td colspan="12" class="empty-cell">暂无满足条件的数据</td>
+            <td colspan="5" class="empty-cell">暂无满足条件的数据</td>
           </tr>
           <tr v-for="row in rows" :key="row.id">
+            <td class="symbol-cell">
+              <button type="button" class="symbol-link" @click="$emit('visitSymbol', row)">
+                {{ row.symbol }}
+              </button>
+              <div class="pair-route">{{ row.longExchange }} → {{ row.shortExchange }}</div>
+            </td>
+
             <td>
-              <div class="exchange-cell">
-                <span>{{ row.exchange }}</span>
-                <small :class="row.source === 'opportunity' ? 'tag-op' : 'tag-snapshot'">
-                  {{ row.source === 'opportunity' ? '套利' : '市场' }}
-                </small>
+              <div class="leg-card">
+                <div class="leg-title">{{ row.longLeg.exchange }}（做多）</div>
+                <div class="metric-row">未平仓：{{ formatMoney(row.longLeg.openInterestUsd) }}</div>
+                <div class="metric-row">成交额：{{ formatMoney(row.longLeg.volume24hUsd) }}</div>
+                <div class="metric-row" :class="rateClass(row.longLeg.fundingRateRaw)">
+                  资金费原始值：{{ formatPercent(row.longLeg.fundingRateRaw, 4) }}
+                </div>
+                <div class="metric-row" :class="rateClass(row.longLeg.fundingRate1h)">
+                  1h：{{ formatPercent(row.longLeg.fundingRate1h, 4) }}
+                </div>
+                <div class="metric-row" :class="rateClass(row.longLeg.fundingRate8h)">
+                  8h：{{ formatPercent(row.longLeg.fundingRate8h, 4) }}
+                </div>
+                <div class="metric-row" :class="rateClass(row.longLeg.fundingRate1y)">
+                  年化：{{ formatPercent(row.longLeg.fundingRate1y, 2) }}
+                </div>
+                <div class="metric-row">下次结算：{{ formatTime(row.longLeg.nextFundingTime) }}</div>
+                <div class="metric-row">结算间隔：{{ row.longLeg.settlementInterval || '-' }}</div>
+                <div class="metric-row">最大杠杆：{{ formatLeverage(row.longLeg.maxLeverage) }}</div>
+                <div class="metric-row">杠杆后名义年化：{{ formatPercent(row.longLeg.leveragedNominalApr, 2) }}</div>
               </div>
             </td>
-            <td class="symbol">{{ row.symbol }}</td>
-            <td>{{ formatMoney(row.openInterestUsd) }}</td>
-            <td>{{ formatMoney(row.volume24hUsd) }}</td>
-            <td :class="rateClass(row.fundingRate1h)">
-              {{ formatPercent(row.fundingRate1h, 4) }}
+
+            <td>
+              <div class="leg-card">
+                <div class="leg-title">{{ row.shortLeg.exchange }}（做空）</div>
+                <div class="metric-row">未平仓：{{ formatMoney(row.shortLeg.openInterestUsd) }}</div>
+                <div class="metric-row">成交额：{{ formatMoney(row.shortLeg.volume24hUsd) }}</div>
+                <div class="metric-row" :class="rateClass(row.shortLeg.fundingRateRaw)">
+                  资金费原始值：{{ formatPercent(row.shortLeg.fundingRateRaw, 4) }}
+                </div>
+                <div class="metric-row" :class="rateClass(row.shortLeg.fundingRate1h)">
+                  1h：{{ formatPercent(row.shortLeg.fundingRate1h, 4) }}
+                </div>
+                <div class="metric-row" :class="rateClass(row.shortLeg.fundingRate8h)">
+                  8h：{{ formatPercent(row.shortLeg.fundingRate8h, 4) }}
+                </div>
+                <div class="metric-row" :class="rateClass(row.shortLeg.fundingRate1y)">
+                  年化：{{ formatPercent(row.shortLeg.fundingRate1y, 2) }}
+                </div>
+                <div class="metric-row">下次结算：{{ formatTime(row.shortLeg.nextFundingTime) }}</div>
+                <div class="metric-row">结算间隔：{{ row.shortLeg.settlementInterval || '-' }}</div>
+                <div class="metric-row">最大杠杆：{{ formatLeverage(row.shortLeg.maxLeverage) }}</div>
+                <div class="metric-row">杠杆后名义年化：{{ formatPercent(row.shortLeg.leveragedNominalApr, 2) }}</div>
+              </div>
             </td>
-            <td :class="rateClass(row.fundingRate8h)">
-              {{ formatPercent(row.fundingRate8h, 4) }}
+
+            <td>
+              <div class="spread-card">
+                <div class="metric-row" :class="rateClass(row.spreadRate1h)">1h差值：{{ formatPercent(row.spreadRate1h, 4) }}</div>
+                <div class="metric-row" :class="rateClass(row.spreadRate8h)">8h差值：{{ formatPercent(row.spreadRate8h, 4) }}</div>
+                <div class="metric-row strong" :class="rateClass(row.spreadRate1yNominal)">
+                  年化差值：{{ formatPercent(row.spreadRate1yNominal, 2) }}
+                </div>
+                <div class="metric-row strong" :class="rateClass(row.leveragedSpreadRate1yNominal)">
+                  杠杆后年化差值：{{ formatPercent(row.leveragedSpreadRate1yNominal, 2) }}
+                </div>
+              </div>
             </td>
-            <td :class="rateClass(row.fundingRate1y)">
-              {{ formatPercent(row.fundingRate1y, 2) }}
-            </td>
-            <td class="next-funding">
-              <span>{{ formatTime(row.nextFundingTime) }}</span>
-              <span :class="rateClass(row.nextFundingRate)">
-                {{ formatPercent(row.nextFundingRate, 4) }}
-              </span>
-            </td>
-            <td>{{ row.settlementInterval }}</td>
-            <td>{{ formatLeverage(row.maxLeverage) }}</td>
-            <td class="apr">{{ formatPercent(row.leveragedNominalApr ?? row.nominalApr, 2) }}</td>
+
             <td>
               <div class="action-group">
-                <button type="button" class="action-button" @click="$emit('preview', row)">预览</button>
-                <button type="button" class="action-button accent" @click="$emit('open', row)">开仓</button>
+                <button type="button" class="action-button" @click="$emit('preview', row.rawOpportunity)">预览</button>
+                <button type="button" class="action-button accent" @click="$emit('open', row.rawOpportunity)">开仓</button>
               </div>
             </td>
           </tr>
@@ -104,17 +137,18 @@ function rateClass(value: number | null): string {
 .market-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1280px;
+  min-width: 1560px;
 }
 
 th,
 td {
   border-bottom: 1px solid var(--line-soft);
-  padding: 6px 8px;
+  padding: 8px;
   font-size: 12px;
   line-height: 1.35;
   white-space: nowrap;
   text-align: left;
+  vertical-align: top;
 }
 
 thead th {
@@ -130,38 +164,48 @@ tbody tr:hover {
   background: rgba(0, 199, 166, 0.05);
 }
 
-.exchange-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.symbol-cell {
+  min-width: 180px;
 }
 
-.tag-op,
-.tag-snapshot {
-  font-size: 10px;
-  border-radius: 2px;
-  padding: 1px 4px;
-  border: 1px solid transparent;
+.symbol-link {
+  border: none;
+  background: transparent;
+  color: #77f5de;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
 }
 
-.tag-op {
-  border-color: rgba(0, 199, 166, 0.7);
-  color: var(--accent-soft);
+.symbol-link:hover {
+  text-decoration: underline;
 }
 
-.tag-snapshot {
-  border-color: var(--line-soft);
+.pair-route {
+  margin-top: 6px;
   color: var(--text-dim);
 }
 
-.symbol {
-  color: #f3f5f7;
-  font-weight: 600;
+.leg-card,
+.spread-card {
+  display: grid;
+  gap: 4px;
+  min-width: 280px;
 }
 
-.next-funding {
-  display: grid;
-  gap: 2px;
+.leg-title {
+  color: #f3f5f7;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.metric-row {
+  color: var(--text-main);
+}
+
+.metric-row.strong {
+  font-weight: 700;
 }
 
 .positive {
@@ -170,11 +214,6 @@ tbody tr:hover {
 
 .negative {
   color: var(--danger);
-}
-
-.apr {
-  font-weight: 700;
-  color: var(--accent-soft);
 }
 
 .action-group {
@@ -210,5 +249,16 @@ tbody tr:hover {
   text-align: center;
   color: var(--text-dim);
   padding: 16px 8px;
+}
+
+@media (max-width: 900px) {
+  .market-table {
+    min-width: 1360px;
+  }
+
+  .leg-card,
+  .spread-card {
+    min-width: 240px;
+  }
 }
 </style>

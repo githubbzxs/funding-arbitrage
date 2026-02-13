@@ -2,13 +2,11 @@
 const props = defineProps<{
   autoRefresh: boolean;
   refreshSeconds: number;
-  language: string;
 }>();
 
 const emit = defineEmits<{
   'update:autoRefresh': [boolean];
   'update:refreshSeconds': [number];
-  'update:language': [string];
   refresh: [];
 }>();
 
@@ -20,39 +18,24 @@ function onRefreshSecondsChange(event: Event): void {
   const target = event.target as HTMLSelectElement;
   emit('update:refreshSeconds', Number(target.value));
 }
-
-function onLanguageChange(event: Event): void {
-  const target = event.target as HTMLSelectElement;
-  emit('update:language', target.value);
-}
 </script>
 
 <template>
   <footer class="bottom-toolbar">
-    <a href="https://developers.binance.com/docs/derivatives" target="_blank" rel="noreferrer">文档</a>
-    <a href="https://t.me/" target="_blank" rel="noreferrer">电报群</a>
-    <a href="#" target="_blank" rel="noreferrer">浏览器插件</a>
-
-    <label>
-      <span>语言</span>
-      <select :value="language" @change="onLanguageChange">
-        <option value="zh-CN">简体中文</option>
-        <option value="en-US">English</option>
-      </select>
-    </label>
-
     <label>
       <span>刷新频率</span>
       <select :value="refreshSeconds" @change="onRefreshSecondsChange">
+        <option :value="2">2秒</option>
         <option :value="5">5秒</option>
         <option :value="10">10秒</option>
-        <option :value="15">15秒</option>
+        <option :value="20">20秒</option>
         <option :value="30">30秒</option>
+        <option :value="60">60秒</option>
       </select>
     </label>
 
     <button type="button" class="toggle" :class="{ active: autoRefresh }" @click="toggleAutoRefresh">
-      {{ autoRefresh ? '自动刷新: 开' : '自动刷新: 关' }}
+      {{ autoRefresh ? '自动刷新：开' : '自动刷新：关' }}
     </button>
     <button type="button" class="toggle" @click="$emit('refresh')">立即刷新</button>
   </footer>
@@ -73,17 +56,6 @@ function onLanguageChange(event: Event): void {
   padding: 6px 12px;
   z-index: 25;
   overflow-x: auto;
-}
-
-.bottom-toolbar a {
-  color: var(--text-dim);
-  text-decoration: none;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.bottom-toolbar a:hover {
-  color: var(--accent-soft);
 }
 
 label {
