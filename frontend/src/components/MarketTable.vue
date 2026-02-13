@@ -11,6 +11,13 @@ defineEmits<{
   preview: [MarketRow];
   open: [MarketRow];
 }>();
+
+function rateClass(value: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '';
+  }
+  return value >= 0 ? 'positive' : 'negative';
+}
 </script>
 
 <template>
@@ -29,7 +36,7 @@ defineEmits<{
             <th>下次费率时间和值</th>
             <th>结算间隔</th>
             <th>最大杠杆</th>
-            <th>名义年化</th>
+            <th>名义年化(杠杆后)</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -52,24 +59,24 @@ defineEmits<{
             <td class="symbol">{{ row.symbol }}</td>
             <td>{{ formatMoney(row.openInterestUsd) }}</td>
             <td>{{ formatMoney(row.volume24hUsd) }}</td>
-            <td :class="row.fundingRate1h >= 0 ? 'positive' : 'negative'">
+            <td :class="rateClass(row.fundingRate1h)">
               {{ formatPercent(row.fundingRate1h, 4) }}
             </td>
-            <td :class="row.fundingRate8h >= 0 ? 'positive' : 'negative'">
+            <td :class="rateClass(row.fundingRate8h)">
               {{ formatPercent(row.fundingRate8h, 4) }}
             </td>
-            <td :class="row.fundingRate1y >= 0 ? 'positive' : 'negative'">
+            <td :class="rateClass(row.fundingRate1y)">
               {{ formatPercent(row.fundingRate1y, 2) }}
             </td>
             <td class="next-funding">
               <span>{{ formatTime(row.nextFundingTime) }}</span>
-              <span :class="row.nextFundingRate >= 0 ? 'positive' : 'negative'">
+              <span :class="rateClass(row.nextFundingRate)">
                 {{ formatPercent(row.nextFundingRate, 4) }}
               </span>
             </td>
             <td>{{ row.settlementInterval }}</td>
             <td>{{ formatLeverage(row.maxLeverage) }}</td>
-            <td class="apr">{{ formatPercent(row.nominalApr, 2) }}</td>
+            <td class="apr">{{ formatPercent(row.leveragedNominalApr ?? row.nominalApr, 2) }}</td>
             <td>
               <div class="action-group">
                 <button type="button" class="action-button" @click="$emit('preview', row)">预览</button>

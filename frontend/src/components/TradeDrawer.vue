@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import type { ExecutionAction, ExecutionRequest, MarketRow } from '../types/market';
+import { formatPercent } from '../utils/format';
 
 const props = defineProps<{
   open: boolean;
@@ -96,8 +97,9 @@ watch(
     form.shortExchange = market.shortExchange || form.shortExchange;
     form.hedgeExchange = market.longExchange || market.shortExchange || form.hedgeExchange;
     form.notionalUsd = Math.max(100, Math.floor(market.volume24hUsd / 10000) * 100 || form.notionalUsd);
-    if (market.maxLeverage > 0) {
-      form.leverage = Math.max(1, Math.min(Math.floor(market.maxLeverage), form.leverage));
+    const maxLev = market.maxUsableLeverage ?? market.maxLeverage;
+    if (typeof maxLev === 'number' && Number.isFinite(maxLev) && maxLev > 0) {
+      form.leverage = Math.max(1, Math.min(Math.floor(maxLev), form.leverage));
     }
   },
   { immediate: true }
@@ -239,8 +241,8 @@ function onSubmit(): void {
           <strong>{{ selectedPairHint }}</strong>
         </div>
         <div class="row">
-          <span>名义年化差</span>
-          <strong>{{ market ? `${market.nominalApr.toFixed(2)}%` : '-' }}</strong>
+          <span>名义年化(杠杆后)</span>
+          <strong>{{ formatPercent(market?.leveragedNominalApr ?? market?.nominalApr, 2) }}</strong>
         </div>
       </section>
 

@@ -27,6 +27,19 @@ function readNumber(record: GenericObject, keys: string[], fallback = 0): number
   return fallback;
 }
 
+function readOptionalNumber(record: GenericObject, keys: string[]): number | null {
+  for (const key of keys) {
+    if (!(key in record)) {
+      continue;
+    }
+    const parsed = toNumber(record[key], Number.NaN);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 function normalizeList(data: unknown): GenericObject[] {
   if (Array.isArray(data)) {
     return data.filter((item): item is GenericObject => typeof item === 'object' && item !== null);
@@ -59,11 +72,23 @@ function hourLabel(hours: number): string {
 
 function buildSnapshotRow(raw: GenericObject): MarketRow {
   const intervalHours = readNumber(raw, ['funding_interval_hours', 'fundingIntervalHours', 'intervalHours'], 8);
-  const fundingRaw = readNumber(raw, ['funding_rate_raw', 'fundingRateRaw'], 0);
-  const rate1h = readNumber(raw, ['rate_1h', 'rate1h'], intervalHours > 0 ? fundingRaw / intervalHours : 0);
-  const rate8h = readNumber(raw, ['rate_8h', 'rate8h'], rate1h * 8);
-  const rate1y = readNumber(raw, ['rate_1y', 'rate1y'], rate1h * 24 * 365);
-  const nominal = readNumber(raw, ['nominal_rate_1y', 'nominalRate1y'], rate1y * readNumber(raw, ['max_leverage'], 1));
+  const fundingRaw = readOptionalNumber(raw, ['funding_rate_raw', 'fundingRateRaw']);
+
+  const rate1hApi = readOptionalNumber(raw, ['rate_1h', 'rate1h']);
+  const rate1h = rate1hApi ?? (fundingRaw !== null && intervalHours > 0 ? fundingRaw / intervalHours : null);
+
+  const rate8hApi = readOptionalNumber(raw, ['rate_8h', 'rate8h']);
+  const rate8h = rate8hApi ?? (rate1h !== null ? rate1h * 8 : null);
+
+  const rate1yApi = readOptionalNumber(raw, ['rate_1y', 'rate1y']);
+  const rate1y = rate1yApi ?? (rate1h !== null ? rate1h * 24 * 365 : null);
+
+  const maxLeverage = readOptionalNumber(raw, ['max_leverage', 'maxLeverage']);
+  const nominalApi = readOptionalNumber(raw, ['nominal_rate_1y', 'nominalRate1y']);
+  const nominal = nominalApi ?? (rate1h !== null ? rate1h * 24 * 365 : null);
+  const leveragedNominalApi = readOptionalNumber(raw, ['leveraged_nominal_rate_1y', 'leveragedNominalRate1y']);
+  const leveragedNominal =
+    leveragedNominalApi ?? (nominal !== null && maxLeverage !== null ? nominal * maxLeverage : null);
 
   return {
     id: `${readString(raw, ['exchange'])}-${readString(raw, ['symbol'])}`,
@@ -77,18 +102,34 @@ function buildSnapshotRow(raw: GenericObject): MarketRow {
     nextFundingTime: readString(raw, ['next_funding_time', 'nextFundingTime'], ''),
     nextFundingRate: fundingRaw,
     settlementInterval: hourLabel(intervalHours),
-    maxLeverage: readNumber(raw, ['max_leverage', 'maxLeverage'], 0),
+    maxLeverage,
     nominalApr: nominal,
+    leveragedNominalApr: leveragedNominal,
+    maxUsableLeverage: maxLeverage,
     source: 'snapshot'
   };
 }
 
 function buildOpportunityRow(raw: GenericObject): MarketRow {
-  const longRate8h = readNumber(raw, ['long_rate_8h', 'longRate8h'], 0);
-  const shortRate8h = readNumber(raw, ['short_rate_8h', 'shortRate8h'], 0);
+  const longRate8h = readOptionalNumber(raw, ['long_rate_8h', 'longRate8h']);
+  const shortRate8h = readOptionalNumber(raw, ['short_rate_8h', 'shortRate8h']);
   const spreadNominal = readNumber(raw, ['spread_rate_1y_nominal', 'spreadRate1yNominal'], 0);
   const longExchange = readString(raw, ['long_exchange', 'longExchange'], '');
   const shortExchange = readString(raw, ['short_exchange', 'shortExchange'], '');
+  const longMaxLeverage = readOptionalNumber(raw, ['long_max_leverage', 'longMaxLeverage']);
+  const shortMaxLeverage = readOptionalNumber(raw, ['short_max_leverage', 'shortMaxLeverage']);
+  const maxUsableApi = readOptionalNumber(raw, ['max_usable_leverage', 'maxUsableLeverage']);
+  const maxUsable =
+    maxUsableApi ??
+    (longMaxLeverage !== null && shortMaxLeverage !== null ? Math.min(longMaxLeverage, shortMaxLeverage) : null);
+  const leveragedSpreadApi = readOptionalNumber(raw, ['leveraged_spread_rate_1y_nominal', 'leveragedSpreadRate1yNominal']);
+  const leveragedSpread = leveragedSpreadApi ?? (maxUsable !== null ? spreadNominal * maxUsable : null);
+
+  const rate8h = longRate8h !== null && shortRate8h !== null ? shortRate8h - longRate8h : null;
+  const rate1h = rate8h !== null ? rate8h / 8 : null;
+  const shortFundingRaw = readOptionalNumber(raw, ['short_funding_rate_raw', 'shortFundingRateRaw']);
+  const longFundingRaw = readOptionalNumber(raw, ['long_funding_rate_raw', 'longFundingRateRaw']);
+  const nextFundingRate = shortFundingRaw !== null && longFundingRaw !== null ? shortFundingRaw - longFundingRaw : null;
 
   return {
     id: `opportunity-${longExchange}-${shortExchange}-${readString(raw, ['symbol'])}`,
@@ -96,22 +137,24 @@ function buildOpportunityRow(raw: GenericObject): MarketRow {
     symbol: readString(raw, ['symbol'], '-'),
     openInterestUsd: 0,
     volume24hUsd: 0,
-    fundingRate1h: (shortRate8h - longRate8h) / 8,
-    fundingRate8h: shortRate8h - longRate8h,
+    fundingRate1h: rate1h,
+    fundingRate8h: rate8h,
     fundingRate1y: spreadNominal,
     nextFundingTime:
       readString(raw, ['long_next_funding_time', 'longNextFundingTime']) ||
       readString(raw, ['short_next_funding_time', 'shortNextFundingTime']),
-    nextFundingRate:
-      readNumber(raw, ['short_funding_rate_raw', 'shortFundingRateRaw'], 0) -
-      readNumber(raw, ['long_funding_rate_raw', 'longFundingRateRaw'], 0),
+    nextFundingRate,
     settlementInterval: '8h',
-    maxLeverage: 0,
+    maxLeverage: maxUsable,
     nominalApr: spreadNominal,
+    leveragedNominalApr: leveragedSpread,
     source: 'opportunity',
     longExchange,
     shortExchange,
-    spreadRate1yNominal: spreadNominal
+    spreadRate1yNominal: spreadNominal,
+    longMaxLeverage,
+    shortMaxLeverage,
+    maxUsableLeverage: maxUsable
   };
 }
 

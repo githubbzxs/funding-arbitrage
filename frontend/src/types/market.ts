@@ -4,18 +4,22 @@ export interface MarketRow {
   symbol: string;
   openInterestUsd: number;
   volume24hUsd: number;
-  fundingRate1h: number;
-  fundingRate8h: number;
-  fundingRate1y: number;
+  fundingRate1h: number | null;
+  fundingRate8h: number | null;
+  fundingRate1y: number | null;
   nextFundingTime: string;
-  nextFundingRate: number;
+  nextFundingRate: number | null;
   settlementInterval: string;
-  maxLeverage: number;
-  nominalApr: number;
+  maxLeverage: number | null;
+  nominalApr: number | null;
+  leveragedNominalApr: number | null;
   source: 'snapshot' | 'opportunity' | 'merged';
   longExchange?: string;
   shortExchange?: string;
   spreadRate1yNominal?: number;
+  longMaxLeverage?: number | null;
+  shortMaxLeverage?: number | null;
+  maxUsableLeverage?: number | null;
 }
 
 export interface FilterState {

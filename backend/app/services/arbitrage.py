@@ -42,6 +42,19 @@ def scan_opportunities(
             if spread < min_spread_rate_1y_nominal:
                 continue
 
+            long_max_leverage = long_leg.max_leverage
+            short_max_leverage = short_leg.max_leverage
+            max_usable_leverage = None
+            if (
+                long_max_leverage is not None
+                and short_max_leverage is not None
+                and long_max_leverage > 0
+                and short_max_leverage > 0
+            ):
+                max_usable_leverage = min(long_max_leverage, short_max_leverage)
+
+            leveraged_spread = spread * max_usable_leverage if max_usable_leverage is not None else None
+
             opportunities.append(
                 Opportunity(
                     symbol=symbol,
@@ -50,6 +63,10 @@ def scan_opportunities(
                     long_nominal_rate_1y=long_leg.nominal_rate_1y or 0.0,
                     short_nominal_rate_1y=short_leg.nominal_rate_1y or 0.0,
                     spread_rate_1y_nominal=spread,
+                    long_max_leverage=long_max_leverage,
+                    short_max_leverage=short_max_leverage,
+                    max_usable_leverage=max_usable_leverage,
+                    leveraged_spread_rate_1y_nominal=leveraged_spread,
                     long_rate_8h=long_leg.rate_8h,
                     short_rate_8h=short_leg.rate_8h,
                     long_funding_rate_raw=long_leg.funding_rate_raw,

@@ -31,6 +31,7 @@ class MarketSnapshot(BaseModel):
     rate_8h: float | None = None
     rate_1y: float | None = None
     nominal_rate_1y: float | None = None
+    leveraged_nominal_rate_1y: float | None = None
     mark_price: float | None = None
     updated_at: datetime = Field(default_factory=utc_now)
 
@@ -57,6 +58,10 @@ class Opportunity(BaseModel):
     long_nominal_rate_1y: float
     short_nominal_rate_1y: float
     spread_rate_1y_nominal: float
+    long_max_leverage: float | None = None
+    short_max_leverage: float | None = None
+    max_usable_leverage: float | None = None
+    leveraged_spread_rate_1y_nominal: float | None = None
     long_rate_8h: float | None = None
     short_rate_8h: float | None = None
     long_funding_rate_raw: float | None = None

@@ -10,8 +10,8 @@ function asPercentValue(value: number): number {
   return Math.abs(value) <= 1 ? value * 100 : value;
 }
 
-export function formatMoney(value: number): string {
-  if (!Number.isFinite(value)) {
+export function formatMoney(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     return '-';
   }
   if (Math.abs(value) < 1000) {
@@ -20,16 +20,16 @@ export function formatMoney(value: number): string {
   return `$${compactFormatter.format(value)}`;
 }
 
-export function formatPercent(value: number, digits = 3): string {
-  if (!Number.isFinite(value)) {
+export function formatPercent(value: number | null | undefined, digits = 3): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     return '-';
   }
   const parsed = asPercentValue(value);
   return `${parsed.toFixed(digits)}%`;
 }
 
-export function formatLeverage(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) {
+export function formatLeverage(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return '-';
   }
   return `${value.toFixed(0)}x`;

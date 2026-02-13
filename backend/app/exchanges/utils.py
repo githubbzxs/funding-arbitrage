@@ -83,6 +83,10 @@ def build_snapshot(
         funding_rate_raw=funding_rate_raw,
         funding_interval_hours=funding_interval_hours,
     )
+
+    leveraged_nominal_rate_1y = None
+    if nominal_rate_1y is not None and max_leverage is not None and max_leverage > 0:
+        leveraged_nominal_rate_1y = nominal_rate_1y * max_leverage
     return MarketSnapshot(
         exchange=exchange,
         symbol=normalized_symbol,
@@ -96,7 +100,7 @@ def build_snapshot(
         rate_8h=rate_8h,
         rate_1y=rate_1y,
         nominal_rate_1y=nominal_rate_1y,
+        leveraged_nominal_rate_1y=leveraged_nominal_rate_1y,
         mark_price=mark_price,
         updated_at=utc_now(),
     )
-

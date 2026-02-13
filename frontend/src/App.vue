@@ -42,6 +42,18 @@ function buildKey(row: MarketRow): string {
   return `${row.exchange.toLowerCase()}::${row.symbol.toLowerCase()}::${row.source}`;
 }
 
+function rowScore(row: MarketRow): number {
+  const leveraged = row.leveragedNominalApr;
+  if (typeof leveraged === 'number' && Number.isFinite(leveraged)) {
+    return leveraged;
+  }
+  const base = row.nominalApr;
+  if (typeof base === 'number' && Number.isFinite(base)) {
+    return base;
+  }
+  return Number.NEGATIVE_INFINITY;
+}
+
 const mergedRows = computed<MarketRow[]>(() => {
   const mergedMap = new Map<string, MarketRow>();
 
@@ -52,7 +64,14 @@ const mergedRows = computed<MarketRow[]>(() => {
     mergedMap.set(buildKey(row), row);
   });
 
-  return [...mergedMap.values()].sort((a, b) => b.nominalApr - a.nominalApr);
+  return [...mergedMap.values()].sort((a, b) => {
+    const left = rowScore(a);
+    const right = rowScore(b);
+    if (left === right) {
+      return 0;
+    }
+    return right > left ? 1 : -1;
+  });
 });
 
 const exchangeOptions = computed(() => {
