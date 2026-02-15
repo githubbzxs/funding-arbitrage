@@ -400,220 +400,235 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="panel">
+  <section class="terminal">
     <header class="panel-head">
       <div>
         <h2>套利执行终端</h2>
-        <p>仓位：{{ positionsCount }} | 订单：{{ ordersCount }}</p>
+        <p>集中输入关键参数，执行与反馈同屏闭环</p>
       </div>
       <div class="head-actions">
-        <button type="button" class="ghost" @click="router.push('/monitor')">去监控页</button>
+        <button type="button" class="ghost" @click="router.push('/monitor')">监控页</button>
         <button type="button" class="ghost" @click="router.push('/settings/api')">API 设置</button>
       </div>
     </header>
 
-    <section class="template-card">
-      <div class="template-head">
-        <h3>策略模板</h3>
-        <button type="button" class="ghost" :disabled="templatesLoading" @click="loadTemplates">
-          {{ templatesLoading ? '刷新中...' : '刷新模板' }}
-        </button>
-      </div>
+    <div class="terminal-grid">
+      <section class="main-pane">
+        <article class="card action-card">
+          <div class="action-tabs">
+            <button
+              v-for="option in ACTION_OPTIONS"
+              :key="option.value"
+              type="button"
+              class="tab"
+              :class="{ active: option.value === currentAction }"
+              @click="currentAction = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
 
-      <div class="template-grid">
-        <label>
-          <span>选择模板</span>
-          <select :value="selectedTemplateId" @change="onTemplateSelect">
-            <option value="">请选择模板</option>
-            <option v-for="item in templates" :key="item.id" :value="item.id">
-              {{ item.name }} ({{ item.symbol }} | {{ item.long_exchange }}/{{ item.short_exchange }})
-            </option>
-          </select>
-        </label>
+          <div class="form-grid">
+            <label>
+              <span>执行模式</span>
+              <select v-model="form.mode">
+                <option value="manual">手动确认</option>
+                <option value="auto">自动执行</option>
+              </select>
+            </label>
 
-        <label>
-          <span>模板名称</span>
-          <input v-model.trim="templateName" placeholder="例如 BTC_跨所_8h" />
-        </label>
-      </div>
+            <label>
+              <span>币对</span>
+              <input v-model.trim="form.symbol" placeholder="例如 BTCUSDT" />
+            </label>
 
-      <div class="template-actions">
-        <button type="button" class="mini" :disabled="templateBusy" @click="saveAsTemplate">另存为模板</button>
-        <button type="button" class="mini" :disabled="templateBusy || !selectedTemplateId" @click="updateCurrentTemplate">更新当前模板</button>
-        <button type="button" class="mini danger" :disabled="templateBusy || !selectedTemplateId" @click="removeCurrentTemplate">删除当前模板</button>
-      </div>
+            <label v-if="currentAction !== 'hedge'">
+              <span>多头交易所</span>
+              <select v-model="form.longExchange">
+                <option value="">请选择</option>
+                <option v-for="exchange in EXCHANGE_OPTIONS" :key="exchange" :value="exchange">
+                  {{ exchange }}
+                </option>
+              </select>
+            </label>
 
-      <p v-if="templateError" class="feedback error">{{ templateError }}</p>
-      <p v-if="templateMessage" class="feedback ok">{{ templateMessage }}</p>
-    </section>
+            <label v-if="currentAction !== 'hedge'">
+              <span>空头交易所</span>
+              <select v-model="form.shortExchange">
+                <option value="">请选择</option>
+                <option v-for="exchange in EXCHANGE_OPTIONS" :key="exchange" :value="exchange">
+                  {{ exchange }}
+                </option>
+              </select>
+            </label>
 
-    <section class="selected-card">
-      <div class="row">
-        <span>当前币对</span>
-        <strong>{{ form.symbol || '-' }}</strong>
-      </div>
-      <div class="row">
-        <span>套利腿</span>
-        <strong>{{ selectedPairHint }}</strong>
-      </div>
-      <div class="row">
-        <span>凭据来源</span>
-        <strong>{{ useManualCredentials ? '本次手动覆盖' : '后端托管凭据' }}</strong>
-      </div>
-    </section>
+            <label v-if="currentAction === 'hedge'">
+              <span>对冲交易所</span>
+              <select v-model="form.hedgeExchange">
+                <option value="">请选择</option>
+                <option v-for="exchange in EXCHANGE_OPTIONS" :key="exchange" :value="exchange">
+                  {{ exchange }}
+                </option>
+              </select>
+            </label>
 
-    <section class="actions-panel">
-      <div class="action-tabs">
-        <button
-          v-for="option in ACTION_OPTIONS"
-          :key="option.value"
-          type="button"
-          class="tab"
-          :class="{ active: option.value === currentAction }"
-          @click="currentAction = option.value"
-        >
-          {{ option.label }}
-        </button>
-      </div>
+            <label v-if="currentAction === 'hedge'">
+              <span>方向</span>
+              <select v-model="form.hedgeSide">
+                <option value="buy">买入</option>
+                <option value="sell">卖出</option>
+              </select>
+            </label>
 
-      <div class="form-grid">
-        <label>
-          <span>执行模式</span>
-          <select v-model="form.mode">
-            <option value="manual">手动确认</option>
-            <option value="auto">自动执行</option>
-          </select>
-        </label>
+            <label v-if="currentAction === 'preview' || currentAction === 'open'">
+              <span>名义金额 (USD)</span>
+              <input v-model.number="form.notionalUsd" type="number" min="10" step="10" />
+            </label>
 
-        <label>
-          <span>币对</span>
-          <input v-model.trim="form.symbol" placeholder="例如 BTCUSDT" />
-        </label>
+            <label v-if="currentAction !== 'preview' && currentAction !== 'emergency-close'">
+              <span>数量</span>
+              <input v-model.number="form.quantity" type="number" min="0.001" step="0.001" />
+            </label>
 
-        <label v-if="currentAction !== 'hedge'">
-          <span>多头交易所</span>
-          <select v-model="form.longExchange">
-            <option value="">请选择</option>
-            <option v-for="exchange in EXCHANGE_OPTIONS" :key="exchange" :value="exchange">
-              {{ exchange }}
-            </option>
-          </select>
-        </label>
+            <label v-if="currentAction === 'preview'">
+              <span>持仓小时</span>
+              <input v-model.number="form.holdHours" type="number" min="1" step="1" />
+            </label>
 
-        <label v-if="currentAction !== 'hedge'">
-          <span>空头交易所</span>
-          <select v-model="form.shortExchange">
-            <option value="">请选择</option>
-            <option v-for="exchange in EXCHANGE_OPTIONS" :key="exchange" :value="exchange">
-              {{ exchange }}
-            </option>
-          </select>
-        </label>
+            <label v-if="currentAction !== 'emergency-close'">
+              <span>杠杆</span>
+              <input v-model.number="form.leverage" type="number" min="1" step="1" />
+            </label>
 
-        <label v-if="currentAction === 'hedge'">
-          <span>对冲交易所</span>
-          <select v-model="form.hedgeExchange">
-            <option value="">请选择</option>
-            <option v-for="exchange in EXCHANGE_OPTIONS" :key="exchange" :value="exchange">
-              {{ exchange }}
-            </option>
-          </select>
-        </label>
+            <label v-if="currentAction === 'emergency-close'" class="full">
+              <span>指定仓位 ID（逗号分隔，可空）</span>
+              <input v-model.trim="form.positionIdsText" placeholder="例如 id1,id2,id3" />
+            </label>
 
-        <label v-if="currentAction === 'hedge'">
-          <span>方向</span>
-          <select v-model="form.hedgeSide">
-            <option value="buy">买入</option>
-            <option value="sell">卖出</option>
-          </select>
-        </label>
-
-        <label v-if="currentAction === 'preview' || currentAction === 'open'">
-          <span>名义金额 (USD)</span>
-          <input v-model.number="form.notionalUsd" type="number" min="10" step="10" />
-        </label>
-
-        <label v-if="currentAction !== 'preview' && currentAction !== 'emergency-close'">
-          <span>数量</span>
-          <input v-model.number="form.quantity" type="number" min="0.001" step="0.001" />
-        </label>
-
-        <label v-if="currentAction === 'preview'">
-          <span>持仓小时</span>
-          <input v-model.number="form.holdHours" type="number" min="1" step="1" />
-        </label>
-
-        <label v-if="currentAction !== 'emergency-close'">
-          <span>杠杆</span>
-          <input v-model.number="form.leverage" type="number" min="1" step="1" />
-        </label>
-
-        <label v-if="currentAction === 'emergency-close'" class="full">
-          <span>指定仓位 ID（逗号分隔，可空）</span>
-          <input v-model.trim="form.positionIdsText" placeholder="例如 id1,id2,id3" />
-        </label>
-
-        <label class="full">
-          <span>备注</span>
-          <textarea v-model.trim="form.note" rows="2" placeholder="可选" />
-        </label>
-      </div>
-
-      <section class="credential-card">
-        <div class="row-inline">
-          <h3>本次请求手动凭据（可选）</h3>
-          <label class="switch">
-            <input v-model="useManualCredentials" type="checkbox" />
-            <span>启用</span>
-          </label>
-        </div>
-        <p class="credential-tip">默认使用后端托管凭据；启用后优先使用本次填写的凭据覆盖。</p>
-
-        <div v-if="useManualCredentials" class="credential-grid">
-          <div class="credential-item">
-            <h4>多头交易所凭据</h4>
-            <input v-model.trim="longCredential.apiKey" placeholder="API Key" />
-            <input v-model.trim="longCredential.apiSecret" type="password" placeholder="API Secret" />
-            <input v-model.trim="longCredential.passphrase" type="password" placeholder="Passphrase（如有）" />
-            <label class="switch">
-              <input v-model="longCredential.testnet" type="checkbox" />
-              <span>Testnet</span>
+            <label class="full">
+              <span>备注</span>
+              <textarea v-model.trim="form.note" rows="2" placeholder="可选" />
             </label>
           </div>
-          <div class="credential-item">
-            <h4>空头交易所凭据</h4>
-            <input v-model.trim="shortCredential.apiKey" placeholder="API Key" />
-            <input v-model.trim="shortCredential.apiSecret" type="password" placeholder="API Secret" />
-            <input v-model.trim="shortCredential.passphrase" type="password" placeholder="Passphrase（如有）" />
-            <label class="switch">
-              <input v-model="shortCredential.testnet" type="checkbox" />
-              <span>Testnet</span>
-            </label>
-          </div>
-          <div class="credential-item">
-            <h4>对冲交易所凭据</h4>
-            <input v-model.trim="hedgeCredential.apiKey" placeholder="API Key" />
-            <input v-model.trim="hedgeCredential.apiSecret" type="password" placeholder="API Secret" />
-            <input v-model.trim="hedgeCredential.passphrase" type="password" placeholder="Passphrase（如有）" />
-            <label class="switch">
-              <input v-model="hedgeCredential.testnet" type="checkbox" />
-              <span>Testnet</span>
-            </label>
-          </div>
-        </div>
+
+          <button type="button" class="submit" :disabled="busy" @click="onSubmit">
+            {{ busy ? '执行中...' : '执行动作' }}
+          </button>
+
+          <p v-if="errorMessage" class="feedback error">{{ errorMessage }}</p>
+          <pre v-if="resultText" class="feedback result">{{ resultText }}</pre>
+        </article>
       </section>
 
-      <button type="button" class="submit" :disabled="busy" @click="onSubmit">
-        {{ busy ? '执行中...' : '执行动作' }}
-      </button>
-      <p v-if="errorMessage" class="feedback error">{{ errorMessage }}</p>
-      <pre v-if="resultText" class="feedback result">{{ resultText }}</pre>
-    </section>
+      <aside class="side-pane">
+        <article class="card summary-card">
+          <div class="summary-row">
+            <span>仓位</span>
+            <strong>{{ positionsCount }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>订单</span>
+            <strong>{{ ordersCount }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>当前币对</span>
+            <strong>{{ form.symbol || '-' }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>套利腿</span>
+            <strong>{{ selectedPairHint }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>凭据来源</span>
+            <strong>{{ useManualCredentials ? '手动覆盖' : '后端托管' }}</strong>
+          </div>
+        </article>
+
+        <article class="card template-card">
+          <div class="template-head">
+            <h3>策略模板</h3>
+            <button type="button" class="ghost" :disabled="templatesLoading" @click="loadTemplates">
+              {{ templatesLoading ? '刷新中...' : '刷新' }}
+            </button>
+          </div>
+
+          <div class="template-grid">
+            <label>
+              <span>选择模板</span>
+              <select :value="selectedTemplateId" @change="onTemplateSelect">
+                <option value="">请选择模板</option>
+                <option v-for="item in templates" :key="item.id" :value="item.id">
+                  {{ item.name }} ({{ item.symbol }} | {{ item.long_exchange }}/{{ item.short_exchange }})
+                </option>
+              </select>
+            </label>
+
+            <label>
+              <span>模板名称</span>
+              <input v-model.trim="templateName" placeholder="例如 BTC_跨所_8h" />
+            </label>
+          </div>
+
+          <div class="template-actions">
+            <button type="button" class="mini" :disabled="templateBusy" @click="saveAsTemplate">另存</button>
+            <button type="button" class="mini" :disabled="templateBusy || !selectedTemplateId" @click="updateCurrentTemplate">更新</button>
+            <button type="button" class="mini danger" :disabled="templateBusy || !selectedTemplateId" @click="removeCurrentTemplate">删除</button>
+          </div>
+
+          <p v-if="templateError" class="feedback error">{{ templateError }}</p>
+          <p v-if="templateMessage" class="feedback ok">{{ templateMessage }}</p>
+        </article>
+
+        <article class="card credential-card">
+          <div class="row-inline">
+            <h3>本次手动凭据（可选）</h3>
+            <label class="switch">
+              <input v-model="useManualCredentials" type="checkbox" />
+              <span>启用</span>
+            </label>
+          </div>
+          <p class="credential-tip">默认使用后端托管凭据；启用后优先使用本次填写的凭据覆盖。</p>
+
+          <div v-if="useManualCredentials" class="credential-grid">
+            <div class="credential-item">
+              <h4>多头交易所</h4>
+              <input v-model.trim="longCredential.apiKey" placeholder="API Key" />
+              <input v-model.trim="longCredential.apiSecret" type="password" placeholder="API Secret" />
+              <input v-model.trim="longCredential.passphrase" type="password" placeholder="Passphrase（如有）" />
+              <label class="switch">
+                <input v-model="longCredential.testnet" type="checkbox" />
+                <span>Testnet</span>
+              </label>
+            </div>
+            <div class="credential-item">
+              <h4>空头交易所</h4>
+              <input v-model.trim="shortCredential.apiKey" placeholder="API Key" />
+              <input v-model.trim="shortCredential.apiSecret" type="password" placeholder="API Secret" />
+              <input v-model.trim="shortCredential.passphrase" type="password" placeholder="Passphrase（如有）" />
+              <label class="switch">
+                <input v-model="shortCredential.testnet" type="checkbox" />
+                <span>Testnet</span>
+              </label>
+            </div>
+            <div class="credential-item">
+              <h4>对冲交易所</h4>
+              <input v-model.trim="hedgeCredential.apiKey" placeholder="API Key" />
+              <input v-model.trim="hedgeCredential.apiSecret" type="password" placeholder="API Secret" />
+              <input v-model.trim="hedgeCredential.passphrase" type="password" placeholder="Passphrase（如有）" />
+              <label class="switch">
+                <input v-model="hedgeCredential.testnet" type="checkbox" />
+                <span>Testnet</span>
+              </label>
+            </div>
+          </div>
+        </article>
+      </aside>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.panel {
+.terminal {
   border: 1px solid var(--line-strong);
   background: var(--panel-bg);
 }
@@ -623,7 +638,7 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 10px;
   border-bottom: 1px solid var(--line-soft);
-  padding: 14px;
+  padding: 12px;
 }
 
 .panel-head h2 {
@@ -643,6 +658,28 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.terminal-grid {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+  align-items: start;
+}
+
+.main-pane,
+.side-pane {
+  display: grid;
+  gap: 12px;
+}
+
+.card {
+  border: 1px solid var(--line-soft);
+  background: #0d1522;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
 .ghost {
   height: 28px;
   border: 1px solid var(--line-soft);
@@ -654,110 +691,6 @@ onMounted(async () => {
 
 .ghost:hover {
   border-color: var(--accent);
-}
-
-.template-card {
-  border-bottom: 1px solid var(--line-soft);
-  padding: 14px;
-  display: grid;
-  gap: 10px;
-}
-
-.template-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.template-head h3 {
-  margin: 0;
-  font-size: 14px;
-}
-
-.template-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.template-grid label {
-  display: grid;
-  gap: 6px;
-}
-
-.template-grid span {
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.template-grid input,
-.template-grid select {
-  width: 100%;
-  border: 1px solid var(--line-soft);
-  background: #111927;
-  color: var(--text-main);
-  border-radius: 2px;
-  padding: 7px 10px;
-  outline: none;
-  font-size: 13px;
-  font-family: inherit;
-}
-
-.template-grid input:focus,
-.template-grid select:focus {
-  border-color: var(--accent);
-}
-
-.template-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.mini {
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--line-soft);
-  background: #131c28;
-  color: var(--text-main);
-  border-radius: 2px;
-  font-size: 12px;
-}
-
-.mini.danger {
-  border-color: rgba(239, 68, 68, 0.6);
-  background: rgba(239, 68, 68, 0.08);
-  color: #ffd0d0;
-}
-
-.selected-card {
-  border-bottom: 1px solid var(--line-soft);
-  padding: 14px;
-  display: grid;
-  gap: 8px;
-}
-
-.selected-card .row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  gap: 12px;
-}
-
-.selected-card span {
-  color: var(--text-dim);
-}
-
-.selected-card strong {
-  color: var(--text-main);
-  text-align: right;
-}
-
-.actions-panel {
-  padding: 14px;
-  display: grid;
-  gap: 12px;
 }
 
 .action-tabs {
@@ -784,22 +717,27 @@ onMounted(async () => {
 .form-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.form-grid label {
+.form-grid label,
+.template-grid label {
   display: grid;
   gap: 6px;
 }
 
-.form-grid span {
+.form-grid span,
+.template-grid span {
   font-size: 12px;
   color: var(--text-dim);
 }
 
 .form-grid input,
 .form-grid select,
-.form-grid textarea {
+.form-grid textarea,
+.template-grid input,
+.template-grid select,
+.credential-item input {
   width: 100%;
   border: 1px solid var(--line-soft);
   background: #111927;
@@ -813,7 +751,10 @@ onMounted(async () => {
 
 .form-grid input:focus,
 .form-grid select:focus,
-.form-grid textarea:focus {
+.form-grid textarea:focus,
+.template-grid input:focus,
+.template-grid select:focus,
+.credential-item input:focus {
   border-color: var(--accent);
 }
 
@@ -821,13 +762,78 @@ onMounted(async () => {
   grid-column: 1 / -1;
 }
 
-.credential-card {
-  border: 1px solid var(--line-soft);
+.submit {
+  height: 36px;
+  border: 1px solid rgba(0, 199, 166, 0.9);
+  background: rgba(0, 199, 166, 0.94);
+  color: #052119;
   border-radius: 2px;
-  padding: 10px;
-  background: #0d141e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.summary-card {
+  gap: 8px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.summary-row span {
+  color: var(--text-dim);
+}
+
+.summary-row strong {
+  text-align: right;
+}
+
+.template-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.template-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+
+.template-actions {
   display: grid;
   gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mini {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-soft);
+  background: #131c28;
+  color: var(--text-main);
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.mini.danger {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ffd0d0;
 }
 
 .row-inline {
@@ -851,14 +857,13 @@ onMounted(async () => {
 
 .credential-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .credential-item {
   border: 1px solid var(--line-soft);
   background: #101722;
-  padding: 10px;
+  padding: 8px;
   display: grid;
   gap: 8px;
 }
@@ -868,16 +873,6 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-dim);
   font-weight: 500;
-}
-
-.credential-item input {
-  border: 1px solid var(--line-soft);
-  background: #111927;
-  color: var(--text-main);
-  border-radius: 2px;
-  padding: 7px 10px;
-  outline: none;
-  font-size: 13px;
 }
 
 .switch {
@@ -894,26 +889,11 @@ onMounted(async () => {
   margin: 0;
 }
 
-.submit {
-  height: 34px;
-  border: 1px solid rgba(0, 199, 166, 0.9);
-  background: rgba(0, 199, 166, 0.94);
-  color: #052119;
-  border-radius: 2px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .feedback {
   margin: 0;
   border: 1px solid var(--line-soft);
   background: #0d141e;
-  padding: 10px;
+  padding: 8px 10px;
   font-size: 12px;
   overflow-x: auto;
 }
@@ -934,18 +914,27 @@ onMounted(async () => {
   color: #b8f5e8;
 }
 
-@media (max-width: 1024px) {
-  .template-grid {
+@media (max-width: 1250px) {
+  .terminal-grid {
     grid-template-columns: 1fr;
   }
 
-  .credential-grid {
-    grid-template-columns: 1fr;
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 840px) {
+@media (max-width: 900px) {
+  .panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .template-actions {
     grid-template-columns: 1fr;
   }
 }
