@@ -138,3 +138,8 @@
   - Why：按需求彻底去除行情页面，收敛为执行与风控监控闭环，减少页面切换与冗余链路。
   - Impact：`frontend/src/router.ts`，`frontend/src/App.vue`，`frontend/src/pages/TradePage.vue`，`frontend/src/pages/MonitorPage.vue`，`frontend/src/pages/ApiSettingsPage.vue`，`frontend/src/api/records.ts`，`frontend/src/api/templates.ts`，`frontend/src/types/market.ts`，`backend/app/main.py`，`backend/app/models/orm.py`，`backend/app/models/schemas.py`，`backend/app/api/templates.py`，`backend/app/api/risk_events.py`，`backend/tests/test_templates_api.py`，`backend/tests/test_risk_events_api.py`。
   - Verify：`cd backend && pytest -q`，`cd frontend && npm run test`，`cd frontend && npm run build`。
+
+- **[2026-02-15] Binance 统一账户下单新增 `portfolioMargin` 自动重试兜底**：当 Binance 首次下单返回 `-2015 Invalid API-key, IP, or permissions` 时，执行网关会自动以 `portfolioMargin=true` 再试一次（走 PAPI 路由），并在设置杠杆时同步携带该参数。
+  - Why：统一账户（Portfolio Margin）与普通 U 本位账户路由不同，避免因路由不匹配导致“Key 正确但下单失败”。
+  - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`
+  - Verify：`cd backend && pytest -q`

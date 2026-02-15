@@ -127,6 +127,39 @@ class CcxtExecutionGateway:
                 raw=_as_dict(order),
             )
         except Exception as exc:
+            if exchange == "binance" and _is_binance_auth_error(exc):
+                pm_params = dict(params)
+                pm_params["portfolioMargin"] = True
+                try:
+                    if leverage is not None:
+                        try:
+                            await client.set_leverage(leverage, ccxt_symbol, {"portfolioMargin": True})
+                        except Exception:
+                            pass
+                    order = await client.create_order(
+                        symbol=ccxt_symbol,
+                        type="market",
+                        side=side,
+                        amount=quantity,
+                        params=pm_params,
+                    )
+                    return GatewayResult(
+                        success=True,
+                        order_id=str(order.get("id")) if order.get("id") is not None else None,
+                        filled_qty=_safe_float(order.get("filled")) or quantity,
+                        avg_price=_safe_float(order.get("average")),
+                        message="涓嬪崟鎴愬姛",
+                        raw=_as_dict(order),
+                    )
+                except Exception as retry_exc:
+                    return GatewayResult(
+                        success=False,
+                        order_id=None,
+                        filled_qty=None,
+                        avg_price=None,
+                        message=f"{exc}; portfolioMargin retry failed: {retry_exc}",
+                        raw={},
+                    )
             return GatewayResult(
                 success=False,
                 order_id=None,
@@ -723,3 +756,8 @@ def _as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {"value": value}
+
+
+def _is_binance_auth_error(exc: Exception) -> bool:
+    text = str(exc)
+    return "-2015" in text and "api-key" in text.lower()
