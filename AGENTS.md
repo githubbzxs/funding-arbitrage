@@ -156,3 +156,8 @@
 
 - **[2026-02-15] 测试 VPS 已完成本次发布（commit: `0e26783`）**：香港测试机 `103.52.152.92` 已执行 `git pull --ff-only origin main` 与 `docker-compose -f docker-compose.vps.yml up -d --build`，`fa-backend/fa-frontend/fa-postgres/fa-redis` 均为 `Up`。
   - Verify：`curl -i http://127.0.0.1:8080/healthz` 返回 `200`，响应体包含 `{"status":"ok"}`。
+
+- **[2026-02-15] Binance 下单默认走统一账户参数**：执行网关在 Binance 下单时始终携带 `portfolioMargin=true`，并在设置杠杆时同步走该参数，不再先走普通路由后重试。
+  - Why：统一账户场景下减少路由不匹配导致的 `-2015` 鉴权误判。
+  - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`
+  - Verify：`cd backend && pytest -q`

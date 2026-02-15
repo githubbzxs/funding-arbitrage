@@ -60,13 +60,8 @@ def _install_fake_ccxt(
 
 
 @pytest.mark.asyncio
-async def test_binance_auth_error_retries_with_portfolio_margin(monkeypatch: pytest.MonkeyPatch) -> None:
-    factory = _FakeExchangeFactory(
-        create_order_errors=[
-            'binanceusdm {"code":-2015,"msg":"Invalid API-key, IP, or permissions for action"}',
-            None,
-        ]
-    )
+async def test_binance_order_uses_portfolio_margin_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    factory = _FakeExchangeFactory(create_order_errors=[None])
     _install_fake_ccxt(monkeypatch, {"binanceusdm": factory})
 
     gateway = CcxtExecutionGateway()
@@ -81,14 +76,13 @@ async def test_binance_auth_error_retries_with_portfolio_margin(monkeypatch: pyt
 
     assert result.success is True
     assert factory.client is not None
-    assert len(factory.client.create_order_params) == 2
-    assert factory.client.create_order_params[0].get("portfolioMargin") is None
-    assert factory.client.create_order_params[1]["portfolioMargin"] is True
+    assert len(factory.client.create_order_params) == 1
+    assert factory.client.create_order_params[0]["portfolioMargin"] is True
     assert {"portfolioMargin": True} in factory.client.set_leverage_params
 
 
 @pytest.mark.asyncio
-async def test_non_binance_auth_error_does_not_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_non_binance_order_does_not_attach_portfolio_margin(monkeypatch: pytest.MonkeyPatch) -> None:
     factory = _FakeExchangeFactory(
         create_order_errors=[
             'okx {"code":-2015,"msg":"Invalid API-key, IP, or permissions for action"}',
