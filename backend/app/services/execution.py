@@ -61,6 +61,7 @@ class CcxtExecutionGateway:
         credential: ExchangeCredential,
         leverage: float | None = None,
         reduce_only: bool = False,
+        position_side: str | None = None,
     ) -> GatewayResult:
         try:
             import ccxt.async_support as ccxt_async  # type: ignore
@@ -105,7 +106,9 @@ class CcxtExecutionGateway:
         params: dict[str, Any] = {}
         if exchange == "binance":
             params["portfolioMargin"] = True
-        if reduce_only:
+            if position_side in {"LONG", "SHORT", "BOTH"}:
+                params["positionSide"] = position_side
+        if reduce_only and not (exchange == "binance" and position_side in {"LONG", "SHORT"}):
             params["reduceOnly"] = True
 
         try:
@@ -135,6 +138,37 @@ class CcxtExecutionGateway:
                 raw=_as_dict(order),
             )
         except Exception as exc:
+            if exchange == "binance" and _is_binance_position_side_mismatch(exc):
+                retry_params = dict(params)
+                if retry_params.get("positionSide") in {"LONG", "SHORT"}:
+                    retry_params["positionSide"] = "BOTH"
+                    if reduce_only:
+                        retry_params["reduceOnly"] = True
+                    try:
+                        order = await client.create_order(
+                            symbol=ccxt_symbol,
+                            type="market",
+                            side=side,
+                            amount=quantity,
+                            params=retry_params,
+                        )
+                        return GatewayResult(
+                            success=True,
+                            order_id=str(order.get("id")) if order.get("id") is not None else None,
+                            filled_qty=_safe_float(order.get("filled")) or quantity,
+                            avg_price=_safe_float(order.get("average")),
+                            message="下单成功",
+                            raw=_as_dict(order),
+                        )
+                    except Exception as retry_exc:
+                        return GatewayResult(
+                            success=False,
+                            order_id=None,
+                            filled_qty=None,
+                            avg_price=None,
+                            message=f"{exc}; positionSide retry failed: {retry_exc}",
+                            raw={},
+                        )
             return GatewayResult(
                 success=False,
                 order_id=None,
@@ -225,6 +259,7 @@ class ExecutionService:
             quantity=long_qty,
             leverage=request.leverage,
             credentials=request.credentials,
+            position_side="LONG",
         )
 
         if long_leg.status == "failed":
@@ -257,6 +292,7 @@ class ExecutionService:
             quantity=short_qty,
             leverage=request.leverage,
             credentials=request.credentials,
+            position_side="SHORT",
         )
 
         legs = [long_leg, short_leg]
@@ -279,6 +315,7 @@ class ExecutionService:
                 leverage=request.leverage,
                 credentials=request.credentials,
                 reduce_only=True,
+                position_side="LONG",
             )
             legs.append(rollback_leg)
             if rollback_leg.status == "ok":
@@ -333,6 +370,7 @@ class ExecutionService:
             leverage=request.leverage,
             credentials=request.credentials,
             reduce_only=True,
+            position_side="LONG",
         )
         if long_leg.status == "failed":
             risk_event_id = await self._create_risk_event(
@@ -366,6 +404,7 @@ class ExecutionService:
             leverage=request.leverage,
             credentials=request.credentials,
             reduce_only=True,
+            position_side="SHORT",
         )
         legs = [long_leg, short_leg]
 
@@ -387,6 +426,7 @@ class ExecutionService:
                 quantity=long_qty,
                 leverage=request.leverage,
                 credentials=request.credentials,
+                position_side="LONG",
             )
             legs.append(rollback_leg)
             if position:
@@ -433,6 +473,7 @@ class ExecutionService:
             leverage=request.leverage,
             credentials=request.credentials,
             reduce_only=False,
+            position_side="LONG" if request.side == "buy" else "SHORT",
             note=request.reason,
         )
         risk_event_id = None
@@ -525,6 +566,7 @@ class ExecutionService:
         leverage: float | None,
         credentials: dict[SupportedExchange, ExchangeCredential],
         reduce_only: bool = False,
+        position_side: str | None = None,
         note: str | None = None,
     ) -> ExecutionLegResult:
         credential = credentials.get(exchange)
@@ -568,6 +610,7 @@ class ExecutionService:
             credential=credential,
             leverage=leverage,
             reduce_only=reduce_only,
+            position_side=position_side,
         )
 
         status = "ok" if gateway_result.success else "failed"
@@ -741,3 +784,8 @@ def _as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {"value": value}
+
+
+def _is_binance_position_side_mismatch(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "-4061" in text and "position side" in text

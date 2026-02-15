@@ -161,3 +161,8 @@
   - Why：统一账户场景下减少路由不匹配导致的 `-2015` 鉴权误判。
   - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`
   - Verify：`cd backend && pytest -q`
+
+- **[2026-02-15] 修复 Binance `-4061` 持仓方向不匹配**：执行网关新增 `position_side` 透传；开/平/回滚/对冲时按腿方向显式设置 `LONG/SHORT`；当 Binance 返回 `-4061` 时自动回退重试为 `positionSide=BOTH`（兼容单向持仓设置）。
+  - Why：统一账户下用户可能开启双向持仓；若参数与账户持仓模式不匹配会直接拒单。
+  - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`，`backend/tests/test_execution_notional_flow.py`
+  - Verify：`cd backend && pytest -q`

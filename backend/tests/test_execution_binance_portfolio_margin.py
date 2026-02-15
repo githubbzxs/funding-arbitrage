@@ -60,7 +60,7 @@ def _install_fake_ccxt(
 
 
 @pytest.mark.asyncio
-async def test_binance_order_uses_portfolio_margin_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_binance_order_uses_portfolio_margin_and_position_side(monkeypatch: pytest.MonkeyPatch) -> None:
     factory = _FakeExchangeFactory(create_order_errors=[None])
     _install_fake_ccxt(monkeypatch, {"binanceusdm": factory})
 
@@ -68,17 +68,51 @@ async def test_binance_order_uses_portfolio_margin_by_default(monkeypatch: pytes
     result = await gateway.place_market_order(
         exchange="binance",
         symbol="BTCUSDT",
-        side="buy",
+        side="sell",
         quantity=0.001,
         credential=ExchangeCredential(api_key="k", api_secret="s", testnet=False),
         leverage=3,
+        reduce_only=True,
+        position_side="LONG",
     )
 
     assert result.success is True
     assert factory.client is not None
     assert len(factory.client.create_order_params) == 1
     assert factory.client.create_order_params[0]["portfolioMargin"] is True
+    assert factory.client.create_order_params[0]["positionSide"] == "LONG"
+    assert "reduceOnly" not in factory.client.create_order_params[0]
     assert {"portfolioMargin": True} in factory.client.set_leverage_params
+
+
+@pytest.mark.asyncio
+async def test_binance_position_side_mismatch_retries_with_both(monkeypatch: pytest.MonkeyPatch) -> None:
+    factory = _FakeExchangeFactory(
+        create_order_errors=[
+            'binanceusdm {"code":-4061,"msg":"Order\'s position side does not match user\'s setting."}',
+            None,
+        ]
+    )
+    _install_fake_ccxt(monkeypatch, {"binanceusdm": factory})
+
+    gateway = CcxtExecutionGateway()
+    result = await gateway.place_market_order(
+        exchange="binance",
+        symbol="BTCUSDT",
+        side="sell",
+        quantity=0.001,
+        credential=ExchangeCredential(api_key="k", api_secret="s", testnet=False),
+        reduce_only=True,
+        position_side="LONG",
+    )
+
+    assert result.success is True
+    assert factory.client is not None
+    assert len(factory.client.create_order_params) == 2
+    assert factory.client.create_order_params[0]["positionSide"] == "LONG"
+    assert "reduceOnly" not in factory.client.create_order_params[0]
+    assert factory.client.create_order_params[1]["positionSide"] == "BOTH"
+    assert factory.client.create_order_params[1]["reduceOnly"] is True
 
 
 @pytest.mark.asyncio

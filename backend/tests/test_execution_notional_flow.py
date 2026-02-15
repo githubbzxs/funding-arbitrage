@@ -60,6 +60,7 @@ class _FakeGateway:
         credential: ExchangeCredential,
         leverage: float | None = None,
         reduce_only: bool = False,
+        position_side: str | None = None,
     ) -> GatewayResult:
         self.calls.append(
             {
@@ -69,6 +70,7 @@ class _FakeGateway:
                 "quantity": quantity,
                 "leverage": leverage,
                 "reduce_only": reduce_only,
+                "position_side": position_side,
                 "api_key": credential.api_key,
             }
         )
@@ -121,6 +123,8 @@ async def test_execution_uses_quantity_and_auto_mode(session: AsyncSession) -> N
     assert len(gateway.calls) == 2
     assert gateway.calls[0]["quantity"] == pytest.approx(0.01)
     assert gateway.calls[1]["quantity"] == pytest.approx(0.01)
+    assert gateway.calls[0]["position_side"] == "LONG"
+    assert gateway.calls[1]["position_side"] == "SHORT"
 
     assert open_result.position_id is not None
     position = await session.get(Position, open_result.position_id)
@@ -145,6 +149,8 @@ async def test_execution_uses_quantity_and_auto_mode(session: AsyncSession) -> N
     assert len(gateway.calls) == 4
     assert gateway.calls[2]["quantity"] == pytest.approx(0.02)
     assert gateway.calls[3]["quantity"] == pytest.approx(0.02)
+    assert gateway.calls[2]["position_side"] == "LONG"
+    assert gateway.calls[3]["position_side"] == "SHORT"
 
     hedge_result = await service.hedge(
         session,
@@ -162,6 +168,7 @@ async def test_execution_uses_quantity_and_auto_mode(session: AsyncSession) -> N
     assert hedge_result.mode == ExecutionMode.auto
     assert len(gateway.calls) == 5
     assert gateway.calls[4]["quantity"] == pytest.approx(0.005)
+    assert gateway.calls[4]["position_side"] == "SHORT"
 
 
 @pytest.mark.asyncio
