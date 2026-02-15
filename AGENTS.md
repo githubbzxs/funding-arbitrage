@@ -133,3 +133,8 @@
   - Why：修复“进入页面仍需等待网络返回”的体验问题，确保尽量先出上次数据，再后台更新。
   - Impact：`frontend/src/composables/useScannerQuery.ts`，`frontend/src/pages/ScannerPage.vue`，`frontend/src/components/ScannerToolbar.vue`，`backend/app/core/config.py`
   - Verify：`cd frontend && npm run test`，`cd frontend && npm run build`，`cd backend && pytest -q`，`https://funding.0xpsyche.me/healthz`
+
+- **[2026-02-15] 系统主入口改造为“套利执行 + 监控终端”并移除行情扫描链路**：前端删除 `/scanner` 及详情页、虚拟表格、行情查询与相关工具模块，路由改为 `/trade`、`/monitor`、`/settings/api`；后端移除 `/api/market/*` 与 `/api/opportunities`，新增策略模板 API（`/api/templates`）与风险事件 API（`/api/risk-events`），交易页支持模板创建/更新/删除与一键回填，监控页支持仓位/订单/风险事件轮询与页内告警条。
+  - Why：按需求彻底去除行情页面，收敛为执行与风控监控闭环，减少页面切换与冗余链路。
+  - Impact：`frontend/src/router.ts`，`frontend/src/App.vue`，`frontend/src/pages/TradePage.vue`，`frontend/src/pages/MonitorPage.vue`，`frontend/src/pages/ApiSettingsPage.vue`，`frontend/src/api/records.ts`，`frontend/src/api/templates.ts`，`frontend/src/types/market.ts`，`backend/app/main.py`，`backend/app/models/orm.py`，`backend/app/models/schemas.py`，`backend/app/api/templates.py`，`backend/app/api/risk_events.py`，`backend/tests/test_templates_api.py`，`backend/tests/test_risk_events_api.py`。
+  - Verify：`cd backend && pytest -q`，`cd frontend && npm run test`，`cd frontend && npm run build`。
