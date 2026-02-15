@@ -153,3 +153,6 @@
   - Why：避免因单所标记价缺失导致下单失败，同时保留名义金额快速换算的便利性。
   - Impact：`backend/app/models/schemas.py`，`backend/app/services/execution.py`，`backend/app/api/execution.py`，`backend/app/api/templates.py`，`backend/tests/test_execution_notional_flow.py`，`backend/tests/test_templates_api.py`，`frontend/src/pages/TradePage.vue`，`frontend/src/api/execution.ts`，`frontend/src/types/market.ts`，`frontend/src/api/templates.ts`，`frontend/src/api/templates.test.ts`
   - Verify：`cd backend && pytest -q`，`cd frontend && npm test`，`cd frontend && npm run build`
+
+- **[2026-02-15] 测试 VPS 已完成本次发布（commit: `0e26783`）**：香港测试机 `103.52.152.92` 已执行 `git pull --ff-only origin main` 与 `docker-compose -f docker-compose.vps.yml up -d --build`，`fa-backend/fa-frontend/fa-postgres/fa-redis` 均为 `Up`。
+  - Verify：`curl -i http://127.0.0.1:8080/healthz` 返回 `200`，响应体包含 `{"status":"ok"}`。
