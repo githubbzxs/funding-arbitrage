@@ -108,7 +108,14 @@ class CcxtExecutionGateway:
             params["portfolioMargin"] = True
             if position_side in {"LONG", "SHORT", "BOTH"}:
                 params["positionSide"] = position_side
-        if reduce_only and not (exchange == "binance" and position_side in {"LONG", "SHORT"}):
+        if exchange == "okx":
+            okx_pos_side = _to_okx_pos_side(position_side)
+            if okx_pos_side is not None:
+                params["posSide"] = okx_pos_side
+        if reduce_only and not (
+            (exchange == "binance" and position_side in {"LONG", "SHORT"})
+            or (exchange == "okx" and params.get("posSide") in {"long", "short"})
+        ):
             params["reduceOnly"] = True
 
         try:
@@ -167,6 +174,37 @@ class CcxtExecutionGateway:
                             filled_qty=None,
                             avg_price=None,
                             message=f"{exc}; positionSide retry failed: {retry_exc}",
+                            raw={},
+                        )
+            if exchange == "okx" and _is_okx_position_side_error(exc):
+                retry_params = dict(params)
+                if retry_params.get("posSide") != "net":
+                    retry_params["posSide"] = "net"
+                    if reduce_only:
+                        retry_params["reduceOnly"] = True
+                    try:
+                        order = await client.create_order(
+                            symbol=ccxt_symbol,
+                            type="market",
+                            side=side,
+                            amount=quantity,
+                            params=retry_params,
+                        )
+                        return GatewayResult(
+                            success=True,
+                            order_id=str(order.get("id")) if order.get("id") is not None else None,
+                            filled_qty=_safe_float(order.get("filled")) or quantity,
+                            avg_price=_safe_float(order.get("average")),
+                            message="下单成功",
+                            raw=_as_dict(order),
+                        )
+                    except Exception as retry_exc:
+                        return GatewayResult(
+                            success=False,
+                            order_id=None,
+                            filled_qty=None,
+                            avg_price=None,
+                            message=f"{exc}; okx posSide retry failed: {retry_exc}",
                             raw={},
                         )
             return GatewayResult(
@@ -786,6 +824,21 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return {"value": value}
 
 
+def _to_okx_pos_side(position_side: str | None) -> str | None:
+    if position_side == "LONG":
+        return "long"
+    if position_side == "SHORT":
+        return "short"
+    if position_side == "BOTH":
+        return "net"
+    return None
+
+
 def _is_binance_position_side_mismatch(exc: Exception) -> bool:
     text = str(exc).lower()
     return "-4061" in text and "position side" in text
+
+
+def _is_okx_position_side_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "51000" in text and "posside" in text

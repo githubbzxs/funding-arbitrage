@@ -137,3 +137,56 @@ async def test_non_binance_order_does_not_attach_portfolio_margin(monkeypatch: p
     assert factory.client is not None
     assert len(factory.client.create_order_params) == 1
     assert "portfolioMargin" not in factory.client.create_order_params[0]
+
+
+@pytest.mark.asyncio
+async def test_okx_order_uses_pos_side_for_hedge_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    factory = _FakeExchangeFactory(create_order_errors=[None])
+    _install_fake_ccxt(monkeypatch, {"okx": factory})
+
+    gateway = CcxtExecutionGateway()
+    result = await gateway.place_market_order(
+        exchange="okx",
+        symbol="ETHUSDT",
+        side="sell",
+        quantity=0.05,
+        credential=ExchangeCredential(api_key="k", api_secret="s", testnet=False),
+        reduce_only=True,
+        position_side="LONG",
+    )
+
+    assert result.success is True
+    assert factory.client is not None
+    assert len(factory.client.create_order_params) == 1
+    assert factory.client.create_order_params[0]["posSide"] == "long"
+    assert "reduceOnly" not in factory.client.create_order_params[0]
+
+
+@pytest.mark.asyncio
+async def test_okx_pos_side_error_retries_with_net_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    factory = _FakeExchangeFactory(
+        create_order_errors=[
+            'okx {"code":"1","data":[{"sCode":"51000","sMsg":"Parameter posSide error "}]}',
+            None,
+        ]
+    )
+    _install_fake_ccxt(monkeypatch, {"okx": factory})
+
+    gateway = CcxtExecutionGateway()
+    result = await gateway.place_market_order(
+        exchange="okx",
+        symbol="ETHUSDT",
+        side="sell",
+        quantity=0.05,
+        credential=ExchangeCredential(api_key="k", api_secret="s", testnet=False),
+        reduce_only=True,
+        position_side="LONG",
+    )
+
+    assert result.success is True
+    assert factory.client is not None
+    assert len(factory.client.create_order_params) == 2
+    assert factory.client.create_order_params[0]["posSide"] == "long"
+    assert "reduceOnly" not in factory.client.create_order_params[0]
+    assert factory.client.create_order_params[1]["posSide"] == "net"
+    assert factory.client.create_order_params[1]["reduceOnly"] is True

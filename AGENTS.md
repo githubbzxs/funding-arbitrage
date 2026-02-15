@@ -166,3 +166,8 @@
   - Why：统一账户下用户可能开启双向持仓；若参数与账户持仓模式不匹配会直接拒单。
   - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`，`backend/tests/test_execution_notional_flow.py`
   - Verify：`cd backend && pytest -q`
+
+- **[2026-02-15] 修复 OKX `51000 Parameter posSide error`**：OKX 下单默认按策略腿方向透传 `posSide=long/short`；若返回 `posSide` 参数错误，自动回退重试 `posSide=net`（并在平仓场景附带 `reduceOnly`）。
+  - Why：OKX 账户可能配置为双向或单向持仓，不同模式对 `posSide/reduceOnly` 组合要求不同。
+  - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`
+  - Verify：`cd backend && pytest -q`
