@@ -119,31 +119,72 @@ class CcxtExecutionGateway:
             params["reduceOnly"] = True
 
         try:
+            order_amount, is_contract_market, contract_size = await self._resolve_order_amount(
+                client=client,
+                exchange=exchange,
+                symbol=symbol,
+                ccxt_symbol=ccxt_symbol,
+                quantity=quantity,
+            )
+        except ValueError as exc:
+            return GatewayResult(
+                success=False,
+                order_id=None,
+                filled_qty=None,
+                avg_price=None,
+                message=str(exc),
+                raw={},
+            )
+
+        def _build_success(order: Any) -> GatewayResult:
+            filled_raw = _safe_float(order.get("filled"))
+            filled_qty = self._normalize_filled_qty(
+                filled=filled_raw,
+                fallback=quantity,
+                is_contract_market=is_contract_market,
+                contract_size=contract_size,
+            )
+            return GatewayResult(
+                success=True,
+                order_id=str(order.get("id")) if order.get("id") is not None else None,
+                filled_qty=filled_qty,
+                avg_price=_safe_float(order.get("average")),
+                message="下单成功",
+                raw=_as_dict(order),
+            )
+
+        try:
             if leverage is not None:
                 try:
                     if exchange == "binance":
                         await client.set_leverage(leverage, ccxt_symbol, {"portfolioMargin": True})
+                    elif exchange == "okx":
+                        lev_params: dict[str, Any] = {"mgnMode": "cross"}
+                        okx_pos_side = params.get("posSide")
+                        if okx_pos_side in {"long", "short", "net"}:
+                            lev_params["posSide"] = okx_pos_side
+                        await client.set_leverage(leverage, ccxt_symbol, lev_params)
                     else:
                         await client.set_leverage(leverage, ccxt_symbol)
-                except Exception:
-                    # 某些交易所不支持动态设杠杆，不阻断下单。
-                    pass
+                except Exception as lev_exc:
+                    if exchange in {"binance", "okx"}:
+                        return GatewayResult(
+                            success=False,
+                            order_id=None,
+                            filled_qty=None,
+                            avg_price=None,
+                            message=f"设置杠杆失败: {lev_exc}",
+                            raw={},
+                        )
 
             order = await client.create_order(
                 symbol=ccxt_symbol,
                 type="market",
                 side=side,
-                amount=quantity,
+                amount=order_amount,
                 params=params,
             )
-            return GatewayResult(
-                success=True,
-                order_id=str(order.get("id")) if order.get("id") is not None else None,
-                filled_qty=_safe_float(order.get("filled")) or quantity,
-                avg_price=_safe_float(order.get("average")),
-                message="下单成功",
-                raw=_as_dict(order),
-            )
+            return _build_success(order)
         except Exception as exc:
             if exchange == "binance" and _is_binance_position_side_mismatch(exc):
                 retry_params = dict(params)
@@ -156,17 +197,10 @@ class CcxtExecutionGateway:
                             symbol=ccxt_symbol,
                             type="market",
                             side=side,
-                            amount=quantity,
+                            amount=order_amount,
                             params=retry_params,
                         )
-                        return GatewayResult(
-                            success=True,
-                            order_id=str(order.get("id")) if order.get("id") is not None else None,
-                            filled_qty=_safe_float(order.get("filled")) or quantity,
-                            avg_price=_safe_float(order.get("average")),
-                            message="下单成功",
-                            raw=_as_dict(order),
-                        )
+                        return _build_success(order)
                     except Exception as retry_exc:
                         return GatewayResult(
                             success=False,
@@ -187,17 +221,10 @@ class CcxtExecutionGateway:
                             symbol=ccxt_symbol,
                             type="market",
                             side=side,
-                            amount=quantity,
+                            amount=order_amount,
                             params=retry_params,
                         )
-                        return GatewayResult(
-                            success=True,
-                            order_id=str(order.get("id")) if order.get("id") is not None else None,
-                            filled_qty=_safe_float(order.get("filled")) or quantity,
-                            avg_price=_safe_float(order.get("average")),
-                            message="下单成功",
-                            raw=_as_dict(order),
-                        )
+                        return _build_success(order)
                     except Exception as retry_exc:
                         return GatewayResult(
                             success=False,
@@ -220,6 +247,66 @@ class CcxtExecutionGateway:
                 await client.close()
             except Exception:
                 pass
+
+    async def _resolve_order_amount(
+        self,
+        *,
+        client: Any,
+        exchange: SupportedExchange,
+        symbol: str,
+        ccxt_symbol: str,
+        quantity: float,
+    ) -> tuple[float, bool, float | None]:
+        order_amount = quantity
+        is_contract_market = False
+        contract_size: float | None = None
+
+        try:
+            try:
+                await client.load_markets(params={"type": "swap"})
+            except Exception:
+                await client.load_markets()
+        except Exception:
+            pass
+
+        market: dict[str, Any] | None = None
+        try:
+            market = client.market(ccxt_symbol)
+        except Exception:
+            market = None
+
+        if isinstance(market, dict):
+            is_contract_market = bool(market.get("contract"))
+            contract_size = _safe_float(market.get("contractSize"))
+            if is_contract_market and contract_size is not None and contract_size > 0:
+                order_amount = quantity / contract_size
+
+        try:
+            precise_amount = client.amount_to_precision(ccxt_symbol, order_amount)
+            parsed = _safe_float(precise_amount)
+            if parsed is not None:
+                order_amount = parsed
+        except Exception:
+            pass
+
+        if order_amount <= 0:
+            raise ValueError(f"换算后的下单数量无效：{exchange} {symbol}")
+        return order_amount, is_contract_market, contract_size
+
+    def _normalize_filled_qty(
+        self,
+        *,
+        filled: float | None,
+        fallback: float,
+        is_contract_market: bool,
+        contract_size: float | None,
+    ) -> float:
+        if filled is None:
+            return fallback
+        if is_contract_market and contract_size is not None and contract_size > 0:
+            base_qty = filled * contract_size
+            return base_qty if base_qty > 0 else fallback
+        return filled if filled > 0 else fallback
 
 
 class ExecutionService:

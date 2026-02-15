@@ -171,3 +171,8 @@
   - Why：OKX 账户可能配置为双向或单向持仓，不同模式对 `posSide/reduceOnly` 组合要求不同。
   - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`
   - Verify：`cd backend && pytest -q`
+
+- **[2026-02-15] 修复跨交易所数量口径不一致导致名义额度偏差**：执行网关下单前按交易所 `contractSize` 将“基础币数量”换算为各所下单单位（合约张数），并在回写成交数量时统一换回基础币数量；同时 Binance/OKX 设置杠杆失败时直接报错中止，避免“杠杆未生效但继续下单”。
+  - Why：不同交易所合约下单单位不同（如 OKX 多为张数），直接复用同一 quantity 会造成实际名义金额偏差。
+  - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`
+  - Verify：`cd backend && pytest -q`

@@ -8,19 +8,32 @@ from app.services.execution import CcxtExecutionGateway
 
 
 class _FakeClient:
-    def __init__(self, create_order_errors: list[str | None]) -> None:
+    def __init__(self, create_order_errors: list[str | None], market: dict | None = None) -> None:
         self._create_order_errors = list(create_order_errors)
+        self._market = market or {"symbol": "BTC/USDT:USDT", "contract": False, "contractSize": 1}
         self.create_order_params: list[dict] = []
+        self.create_order_amounts: list[float] = []
         self.set_leverage_params: list[dict | None] = []
 
     def set_sandbox_mode(self, _enabled: bool) -> None:
         return None
+
+    async def load_markets(self, params: dict | None = None) -> dict:
+        _ = params
+        return {}
+
+    def market(self, _symbol: str) -> dict:
+        return dict(self._market)
+
+    def amount_to_precision(self, _symbol: str, amount: float) -> str:
+        return str(amount)
 
     async def set_leverage(self, _leverage: float, _symbol: str, params: dict | None = None) -> None:
         self.set_leverage_params.append(params)
 
     async def create_order(self, *, symbol: str, type: str, side: str, amount: float, params: dict):
         _ = symbol, type, side, amount
+        self.create_order_amounts.append(amount)
         self.create_order_params.append(dict(params))
         if self._create_order_errors:
             error = self._create_order_errors.pop(0)
@@ -37,12 +50,13 @@ class _FakeClient:
 
 
 class _FakeExchangeFactory:
-    def __init__(self, create_order_errors: list[str | None]) -> None:
+    def __init__(self, create_order_errors: list[str | None], market: dict | None = None) -> None:
         self._create_order_errors = create_order_errors
+        self._market = market
         self.client: _FakeClient | None = None
 
     def __call__(self, _config: dict) -> _FakeClient:
-        self.client = _FakeClient(self._create_order_errors)
+        self.client = _FakeClient(self._create_order_errors, self._market)
         return self.client
 
 
@@ -190,3 +204,27 @@ async def test_okx_pos_side_error_retries_with_net_mode(monkeypatch: pytest.Monk
     assert "reduceOnly" not in factory.client.create_order_params[0]
     assert factory.client.create_order_params[1]["posSide"] == "net"
     assert factory.client.create_order_params[1]["reduceOnly"] is True
+
+
+@pytest.mark.asyncio
+async def test_okx_contract_size_converts_base_quantity(monkeypatch: pytest.MonkeyPatch) -> None:
+    factory = _FakeExchangeFactory(
+        create_order_errors=[None],
+        market={"symbol": "ETH/USDT:USDT", "contract": True, "contractSize": 0.1},
+    )
+    _install_fake_ccxt(monkeypatch, {"okx": factory})
+
+    gateway = CcxtExecutionGateway()
+    result = await gateway.place_market_order(
+        exchange="okx",
+        symbol="ETHUSDT",
+        side="buy",
+        quantity=0.01,
+        credential=ExchangeCredential(api_key="k", api_secret="s", testnet=False),
+    )
+
+    assert result.success is True
+    assert factory.client is not None
+    assert len(factory.client.create_order_amounts) == 1
+    assert factory.client.create_order_amounts[0] == pytest.approx(0.1)
+    assert result.filled_qty == pytest.approx(0.01)
