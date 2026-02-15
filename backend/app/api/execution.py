@@ -31,7 +31,10 @@ async def open_position(
 ) -> ExecutionActionResponse:
     """开仓执行。"""
 
-    return await execution_service.open_position(session, request)
+    try:
+        return await execution_service.open_position(session, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/close", response_model=ExecutionActionResponse)
@@ -44,7 +47,7 @@ async def close_position(
     try:
         return await execution_service.close_position(session, request)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/hedge", response_model=ExecutionActionResponse)
@@ -54,7 +57,10 @@ async def hedge_position(
 ) -> ExecutionActionResponse:
     """对冲执行。"""
 
-    return await execution_service.hedge(session, request)
+    try:
+        return await execution_service.hedge(session, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/emergency-close", response_model=ExecutionActionResponse)

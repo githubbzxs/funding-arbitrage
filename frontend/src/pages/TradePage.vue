@@ -48,13 +48,11 @@ const selectedTemplateId = ref('');
 const templateName = ref('');
 
 const form = reactive({
-  mode: 'manual' as 'manual' | 'auto',
   symbol: '',
   longExchange: '' as SupportedExchange | '',
   shortExchange: '' as SupportedExchange | '',
   hedgeExchange: '' as SupportedExchange | '',
   hedgeSide: 'sell' as 'buy' | 'sell',
-  quantity: 1,
   notionalUsd: 1000,
   leverage: 5,
   holdHours: 8,
@@ -166,13 +164,11 @@ function buildPayload(): Record<string, unknown> {
 
   if (action === 'open') {
     return {
-      mode: form.mode,
       symbol: form.symbol,
       long_exchange: form.longExchange,
       short_exchange: form.shortExchange,
-      quantity: form.quantity,
-      leverage: form.leverage,
       notional_usd: form.notionalUsd,
+      leverage: form.leverage,
       credentials,
       note: form.note || undefined,
     };
@@ -180,12 +176,10 @@ function buildPayload(): Record<string, unknown> {
 
   if (action === 'close') {
     return {
-      mode: form.mode,
       symbol: form.symbol,
       long_exchange: form.longExchange,
       short_exchange: form.shortExchange,
-      long_quantity: form.quantity,
-      short_quantity: form.quantity,
+      notional_usd: form.notionalUsd,
       leverage: form.leverage,
       credentials,
       note: form.note || undefined,
@@ -194,11 +188,10 @@ function buildPayload(): Record<string, unknown> {
 
   if (action === 'hedge') {
     return {
-      mode: form.mode,
       symbol: form.symbol,
       exchange: form.hedgeExchange,
       side: form.hedgeSide,
-      quantity: form.quantity,
+      notional_usd: form.notionalUsd,
       leverage: form.leverage,
       credentials,
       reason: form.note || undefined,
@@ -206,7 +199,6 @@ function buildPayload(): Record<string, unknown> {
   }
 
   return {
-    mode: form.mode,
     position_ids: parsePositionIds(),
     credentials,
   };
@@ -217,10 +209,6 @@ function applyTemplate(template: StrategyTemplate): void {
   form.longExchange = template.long_exchange;
   form.shortExchange = template.short_exchange;
   form.hedgeExchange = template.long_exchange;
-  form.mode = template.mode;
-  if (typeof template.quantity === 'number' && Number.isFinite(template.quantity)) {
-    form.quantity = template.quantity;
-  }
   if (typeof template.notional_usd === 'number' && Number.isFinite(template.notional_usd)) {
     form.notionalUsd = template.notional_usd;
   }
@@ -251,8 +239,6 @@ function buildTemplatePayload(): StrategyTemplatePayload {
     symbol: form.symbol.toUpperCase(),
     long_exchange: form.longExchange,
     short_exchange: form.shortExchange,
-    mode: form.mode,
-    quantity: form.quantity,
     notional_usd: form.notionalUsd,
     leverage: form.leverage,
     hold_hours: form.holdHours,
@@ -430,14 +416,6 @@ onMounted(async () => {
 
           <div class="form-grid">
             <label>
-              <span>执行模式</span>
-              <select v-model="form.mode">
-                <option value="manual">手动确认</option>
-                <option value="auto">自动执行</option>
-              </select>
-            </label>
-
-            <label>
               <span>币对</span>
               <input v-model.trim="form.symbol" placeholder="例如 BTCUSDT" />
             </label>
@@ -480,14 +458,9 @@ onMounted(async () => {
               </select>
             </label>
 
-            <label v-if="currentAction === 'preview' || currentAction === 'open'">
+            <label v-if="currentAction !== 'emergency-close'">
               <span>名义金额 (USD)</span>
               <input v-model.number="form.notionalUsd" type="number" min="10" step="10" />
-            </label>
-
-            <label v-if="currentAction !== 'preview' && currentAction !== 'emergency-close'">
-              <span>数量</span>
-              <input v-model.number="form.quantity" type="number" min="0.001" step="0.001" />
             </label>
 
             <label v-if="currentAction === 'preview'">

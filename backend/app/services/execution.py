@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
@@ -19,6 +19,7 @@ from app.models.schemas import (
     ExecutionPreviewRequest,
     ExecutionPreviewResponse,
     HedgeRequest,
+    MarketSnapshot,
     OpenPositionRequest,
     SupportedExchange,
 )
@@ -46,7 +47,7 @@ class GatewayResult:
 
 
 class CcxtExecutionGateway:
-    """ccxt 下单网关，封装自动模式执行细节。"""
+    """ccxt 下单网关，封装自动执行细节。"""
 
     async def place_market_order(
         self,
@@ -148,7 +149,7 @@ class CcxtExecutionGateway:
                         order_id=str(order.get("id")) if order.get("id") is not None else None,
                         filled_qty=_safe_float(order.get("filled")) or quantity,
                         avg_price=_safe_float(order.get("average")),
-                        message="涓嬪崟鎴愬姛",
+                        message="下单成功",
                         raw=_as_dict(order),
                     )
                 except Exception as retry_exc:
@@ -222,13 +223,27 @@ class ExecutionService:
         session: AsyncSession,
         request: OpenPositionRequest,
     ) -> ExecutionActionResponse:
+        pricing_snapshots = await self._fetch_pricing_snapshots()
+        long_qty = self._calculate_quantity_from_notional(
+            snapshots=pricing_snapshots,
+            exchange=request.long_exchange,
+            symbol=request.symbol,
+            notional_usd=request.notional_usd,
+        )
+        short_qty = self._calculate_quantity_from_notional(
+            snapshots=pricing_snapshots,
+            exchange=request.short_exchange,
+            symbol=request.symbol,
+            notional_usd=request.notional_usd,
+        )
+
         position = Position(
             symbol=request.symbol,
             long_exchange=request.long_exchange,
             short_exchange=request.short_exchange,
-            long_qty=request.quantity,
-            short_qty=request.quantity,
-            mode=request.mode.value,
+            long_qty=long_qty,
+            short_qty=short_qty,
+            mode=ExecutionMode.auto.value,
             status="opening",
             entry_spread_rate=await self._resolve_spread(request.symbol, request.long_exchange, request.short_exchange),
             opened_at=utc_now(),
@@ -240,12 +255,11 @@ class ExecutionService:
         long_leg = await self._execute_leg(
             session=session,
             action="open",
-            mode=request.mode,
             position_id=position.id,
             exchange=request.long_exchange,
             symbol=request.symbol,
             side="buy",
-            quantity=request.quantity,
+            quantity=long_qty,
             leverage=request.leverage,
             credentials=request.credentials,
         )
@@ -263,7 +277,7 @@ class ExecutionService:
             return ExecutionActionResponse(
                 success=False,
                 action="open",
-                mode=request.mode,
+                mode=ExecutionMode.auto,
                 position_id=position.id,
                 legs=[long_leg],
                 risk_event_id=risk_event_id,
@@ -273,12 +287,11 @@ class ExecutionService:
         short_leg = await self._execute_leg(
             session=session,
             action="open",
-            mode=request.mode,
             position_id=position.id,
             exchange=request.short_exchange,
             symbol=request.symbol,
             side="sell",
-            quantity=request.quantity,
+            quantity=short_qty,
             leverage=request.leverage,
             credentials=request.credentials,
         )
@@ -295,18 +308,17 @@ class ExecutionService:
             rollback_leg = await self._execute_leg(
                 session=session,
                 action="rollback",
-                mode=request.mode,
                 position_id=position.id,
                 exchange=request.long_exchange,
                 symbol=request.symbol,
                 side="sell",
-                quantity=request.quantity,
+                quantity=long_qty,
                 leverage=request.leverage,
                 credentials=request.credentials,
                 reduce_only=True,
             )
             legs.append(rollback_leg)
-            if rollback_leg.status in {"ok", "manual_pending"}:
+            if rollback_leg.status == "ok":
                 position.status = "rolled_back"
                 message = "开仓第二腿失败，已尝试回滚第一腿"
             else:
@@ -316,28 +328,22 @@ class ExecutionService:
             return ExecutionActionResponse(
                 success=False,
                 action="open",
-                mode=request.mode,
+                mode=ExecutionMode.auto,
                 position_id=position.id,
                 legs=legs,
                 risk_event_id=risk_event_id,
                 message=message,
             )
 
-        if request.mode == ExecutionMode.manual:
-            position.status = "manual_pending"
-            message = "已记录手动开仓指令"
-        else:
-            position.status = "open"
-            message = "开仓成功"
-
+        position.status = "open"
         await session.commit()
         return ExecutionActionResponse(
             success=True,
             action="open",
-            mode=request.mode,
+            mode=ExecutionMode.auto,
             position_id=position.id,
             legs=legs,
-            message=message,
+            message="开仓成功",
         )
 
     async def close_position(
@@ -356,7 +362,6 @@ class ExecutionService:
         long_leg = await self._execute_leg(
             session=session,
             action="close",
-            mode=request.mode,
             position_id=position.id if position else None,
             exchange=long_exchange,
             symbol=symbol,
@@ -380,7 +385,7 @@ class ExecutionService:
             return ExecutionActionResponse(
                 success=False,
                 action="close",
-                mode=request.mode,
+                mode=ExecutionMode.auto,
                 position_id=position.id if position else None,
                 legs=[long_leg],
                 risk_event_id=risk_event_id,
@@ -390,7 +395,6 @@ class ExecutionService:
         short_leg = await self._execute_leg(
             session=session,
             action="close",
-            mode=request.mode,
             position_id=position.id if position else None,
             exchange=short_exchange,
             symbol=symbol,
@@ -413,7 +417,6 @@ class ExecutionService:
             rollback_leg = await self._execute_leg(
                 session=session,
                 action="rollback",
-                mode=request.mode,
                 position_id=position.id if position else None,
                 exchange=long_exchange,
                 symbol=symbol,
@@ -429,24 +432,21 @@ class ExecutionService:
             return ExecutionActionResponse(
                 success=False,
                 action="close",
-                mode=request.mode,
+                mode=ExecutionMode.auto,
                 position_id=position.id if position else None,
                 legs=legs,
                 risk_event_id=risk_event_id,
-                message="平仓第二腿失败，已执行回滚/对冲尝试",
+                message="平仓第二腿失败，已执行回滚对冲尝试",
             )
 
         if position:
-            if request.mode == ExecutionMode.manual:
-                position.status = "close_pending_manual"
-            else:
-                position.status = "closed"
-                position.closed_at = utc_now()
+            position.status = "closed"
+            position.closed_at = utc_now()
         await session.commit()
         return ExecutionActionResponse(
             success=True,
             action="close",
-            mode=request.mode,
+            mode=ExecutionMode.auto,
             position_id=position.id if position else None,
             legs=legs,
             message="平仓执行完成",
@@ -457,15 +457,22 @@ class ExecutionService:
         session: AsyncSession,
         request: HedgeRequest,
     ) -> ExecutionActionResponse:
+        pricing_snapshots = await self._fetch_pricing_snapshots()
+        quantity = self._calculate_quantity_from_notional(
+            snapshots=pricing_snapshots,
+            exchange=request.exchange,
+            symbol=request.symbol,
+            notional_usd=request.notional_usd,
+        )
+
         leg = await self._execute_leg(
             session=session,
             action="hedge",
-            mode=request.mode,
             position_id=None,
             exchange=request.exchange,
             symbol=request.symbol,
             side=request.side,
-            quantity=request.quantity,
+            quantity=quantity,
             leverage=request.leverage,
             credentials=request.credentials,
             reduce_only=False,
@@ -485,7 +492,7 @@ class ExecutionService:
         return ExecutionActionResponse(
             success=success,
             action="hedge",
-            mode=request.mode,
+            mode=ExecutionMode.auto,
             legs=[leg],
             risk_event_id=risk_event_id,
             message="对冲执行完成" if success else "对冲失败",
@@ -507,7 +514,6 @@ class ExecutionService:
             close_result = await self.close_position(
                 session,
                 ClosePositionRequest(
-                    mode=request.mode,
                     position_id=position.id,
                     credentials=request.credentials,
                 ),
@@ -519,7 +525,7 @@ class ExecutionService:
         return ExecutionActionResponse(
             success=failed == 0,
             action="emergency-close",
-            mode=request.mode,
+            mode=ExecutionMode.auto,
             legs=all_legs,
             message=f"紧急全平完成，总仓位 {len(positions)}，失败 {failed}",
         )
@@ -529,7 +535,6 @@ class ExecutionService:
         *,
         session: AsyncSession,
         action: str,
-        mode: ExecutionMode,
         position_id: str | None,
         exchange: SupportedExchange,
         symbol: str,
@@ -540,33 +545,6 @@ class ExecutionService:
         reduce_only: bool = False,
         note: str | None = None,
     ) -> ExecutionLegResult:
-        if mode == ExecutionMode.manual:
-            result = ExecutionLegResult(
-                exchange=exchange,
-                symbol=symbol,
-                side=side,  # type: ignore[arg-type]
-                quantity=quantity,
-                status="manual_pending",
-                message="手动模式：请在交易所客户端完成下单",
-            )
-            await self._create_order(
-                session=session,
-                position_id=position_id,
-                action=action,
-                mode=mode,
-                status=result.status,
-                exchange=exchange,
-                symbol=symbol,
-                side=side,
-                quantity=quantity,
-                filled_qty=None,
-                avg_price=None,
-                exchange_order_id=None,
-                note=note,
-                extra={"reduce_only": reduce_only},
-            )
-            return result
-
         credential = credentials.get(exchange)
         if credential is None:
             try:
@@ -587,7 +565,6 @@ class ExecutionService:
                 session=session,
                 position_id=position_id,
                 action=action,
-                mode=mode,
                 status=result.status,
                 exchange=exchange,
                 symbol=symbol,
@@ -629,7 +606,6 @@ class ExecutionService:
             session=session,
             position_id=position_id,
             action=action,
-            mode=mode,
             status=status,
             exchange=exchange,
             symbol=symbol,
@@ -649,7 +625,6 @@ class ExecutionService:
         session: AsyncSession,
         position_id: str | None,
         action: str,
-        mode: ExecutionMode,
         status: str,
         exchange: str,
         symbol: str,
@@ -664,7 +639,7 @@ class ExecutionService:
         order = Order(
             position_id=position_id,
             action=action,
-            mode=mode.value,
+            mode=ExecutionMode.auto.value,
             status=status,
             exchange=exchange,
             symbol=symbol,
@@ -733,14 +708,72 @@ class ExecutionService:
                 "short_qty": position.short_qty,
             }
 
+        pricing_snapshots = await self._fetch_pricing_snapshots()
+        assert request.symbol is not None
+        assert request.long_exchange is not None
+        assert request.short_exchange is not None
+        assert request.notional_usd is not None
+
+        long_qty = self._calculate_quantity_from_notional(
+            snapshots=pricing_snapshots,
+            exchange=request.long_exchange,
+            symbol=request.symbol,
+            notional_usd=request.notional_usd,
+        )
+        short_qty = self._calculate_quantity_from_notional(
+            snapshots=pricing_snapshots,
+            exchange=request.short_exchange,
+            symbol=request.symbol,
+            notional_usd=request.notional_usd,
+        )
+
         return {
             "position": None,
             "symbol": request.symbol,
             "long_exchange": request.long_exchange,
             "short_exchange": request.short_exchange,
-            "long_qty": request.long_quantity,
-            "short_qty": request.short_quantity,
+            "long_qty": long_qty,
+            "short_qty": short_qty,
         }
+
+    async def _fetch_pricing_snapshots(self) -> list[MarketSnapshot]:
+        snapshots_resp = await self.market_data_service.fetch_snapshots()
+        return snapshots_resp.snapshots
+
+    def _calculate_quantity_from_notional(
+        self,
+        *,
+        snapshots: list[MarketSnapshot],
+        exchange: SupportedExchange,
+        symbol: str,
+        notional_usd: float,
+    ) -> float:
+        price = self._find_mark_price(snapshots=snapshots, exchange=exchange, symbol=symbol)
+        if price is None or price <= 0:
+            raise ValueError(f"无法根据名义金额换算数量：{exchange} {symbol} 缺少有效标记价格")
+
+        quantity = notional_usd / price
+        if quantity <= 0:
+            raise ValueError(f"换算后的下单数量无效：{exchange} {symbol}")
+        return quantity
+
+    def _find_mark_price(
+        self,
+        *,
+        snapshots: list[MarketSnapshot],
+        exchange: SupportedExchange,
+        symbol: str,
+    ) -> float | None:
+        target_symbol = symbol.upper()
+        for row in snapshots:
+            if row.exchange != exchange:
+                continue
+            if row.symbol != target_symbol:
+                continue
+            price = _safe_float(row.mark_price)
+            if price is not None and price > 0:
+                return price
+        return None
 
 
 def _safe_float(value: Any) -> float | None:

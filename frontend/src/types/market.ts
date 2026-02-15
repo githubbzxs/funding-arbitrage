@@ -1,7 +1,7 @@
 ﻿export type SupportedExchange = 'binance' | 'okx' | 'bybit' | 'bitget' | 'gateio';
 
 export type ExecutionAction = 'preview' | 'open' | 'close' | 'hedge' | 'emergency-close';
-export type ExecutionMode = 'manual' | 'auto';
+export type ExecutionMode = 'auto';
 
 export interface ExchangeCredential {
   api_key: string;
@@ -72,8 +72,6 @@ export interface StrategyTemplate {
   symbol: string;
   long_exchange: SupportedExchange;
   short_exchange: SupportedExchange;
-  mode: ExecutionMode;
-  quantity: number | null;
   notional_usd: number | null;
   leverage: number | null;
   hold_hours: number | null;
@@ -87,8 +85,6 @@ export interface StrategyTemplatePayload {
   symbol: string;
   long_exchange: SupportedExchange;
   short_exchange: SupportedExchange;
-  mode: ExecutionMode;
-  quantity?: number | null;
   notional_usd?: number | null;
   leverage?: number | null;
   hold_hours?: number | null;
@@ -100,8 +96,6 @@ export interface StrategyTemplateUpdatePayload {
   symbol?: string;
   long_exchange?: SupportedExchange;
   short_exchange?: SupportedExchange;
-  mode?: ExecutionMode;
-  quantity?: number | null;
   notional_usd?: number | null;
   leverage?: number | null;
   hold_hours?: number | null;

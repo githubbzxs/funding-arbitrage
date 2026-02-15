@@ -143,3 +143,8 @@
   - Why：统一账户（Portfolio Margin）与普通 U 本位账户路由不同，避免因路由不匹配导致“Key 正确但下单失败”。
   - Impact：`backend/app/services/execution.py`，`backend/tests/test_execution_binance_portfolio_margin.py`
   - Verify：`cd backend && pytest -q`
+
+- **[2026-02-15] 执行链路改为仅名义金额下单并移除手动模式**：`open/close/hedge` 请求移除数量参数，统一使用 `notional_usd`，由后端按交易所 `mark_price` 换算数量；执行模式固定为 `auto`，前端交易页移除“执行模式/数量”输入。
+  - Why：减少手工换算误差，统一下单口径并收敛交互复杂度。
+  - Impact：`backend/app/models/schemas.py`，`backend/app/services/execution.py`，`backend/app/api/execution.py`，`backend/app/exchanges/providers/ccxt_market.py`，`frontend/src/pages/TradePage.vue`，`frontend/src/types/market.ts`，`frontend/src/api/templates.ts`
+  - Verify：`cd backend && pytest -q`，`cd frontend && npm test`，`cd frontend && npm run build`

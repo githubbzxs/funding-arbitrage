@@ -28,7 +28,6 @@ async def test_template_crud(session: AsyncSession) -> None:
             symbol="btcusdt",
             long_exchange="okx",
             short_exchange="binance",
-            mode="manual",
             leverage=6,
             notional_usd=1500,
             hold_hours=8,
@@ -47,13 +46,11 @@ async def test_template_crud(session: AsyncSession) -> None:
         created.id,
         StrategyTemplateUpdate(
             name="BTC-OKX-BINANCE-V2",
-            quantity=0.02,
             notional_usd=2000,
         ),
         session,
     )
     assert updated.name == "BTC-OKX-BINANCE-V2"
-    assert updated.quantity == pytest.approx(0.02)
     assert updated.notional_usd == pytest.approx(2000)
 
     deleted = await delete_template(created.id, session)

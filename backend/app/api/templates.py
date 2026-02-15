@@ -4,7 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
 from app.models.orm import StrategyTemplate
-from app.models.schemas import StrategyTemplateCreate, StrategyTemplateRead, StrategyTemplatesResponse, StrategyTemplateUpdate
+from app.models.schemas import (
+    ExecutionMode,
+    StrategyTemplateCreate,
+    StrategyTemplateRead,
+    StrategyTemplatesResponse,
+    StrategyTemplateUpdate,
+)
 
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
@@ -40,8 +46,8 @@ async def create_template(
         symbol=request.symbol,
         long_exchange=request.long_exchange,
         short_exchange=request.short_exchange,
-        mode=request.mode.value,
-        quantity=request.quantity,
+        mode=ExecutionMode.auto.value,
+        quantity=None,
         notional_usd=request.notional_usd,
         leverage=request.leverage,
         hold_hours=request.hold_hours,
@@ -66,8 +72,6 @@ async def update_template(
         raise HTTPException(status_code=404, detail=f"模板不存在: {template_id}")
 
     payload = request.model_dump(exclude_unset=True)
-    if "mode" in payload and payload["mode"] is not None:
-        payload["mode"] = payload["mode"].value
 
     if "name" in payload:
         existing = await session.scalar(

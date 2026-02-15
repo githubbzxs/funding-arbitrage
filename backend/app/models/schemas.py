@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
@@ -10,14 +10,14 @@ SupportedExchange = Literal["binance", "okx", "bybit", "bitget", "gateio"]
 
 
 class FetchError(BaseModel):
-    """单交易所抓取失败信息。"""
+    """单交易所抓取错误。"""
 
     exchange: SupportedExchange
     message: str
 
 
 class MarketSnapshot(BaseModel):
-    """统一后的市场快照字段。"""
+    """统一行情快照。"""
 
     exchange: SupportedExchange
     symbol: str
@@ -42,7 +42,7 @@ class MarketSnapshot(BaseModel):
 
 
 class MarketSnapshotsResponse(BaseModel):
-    """市场快照接口响应。"""
+    """行情快照响应。"""
 
     as_of: datetime = Field(default_factory=utc_now)
     snapshots: list[MarketSnapshot] = Field(default_factory=list)
@@ -81,7 +81,7 @@ class OpportunitiesResponse(BaseModel):
 
 
 class OpportunityBoardLeg(BaseModel):
-    """board 表格中的单腿数据。"""
+    """board 单腿字段。"""
 
     exchange: SupportedExchange
     funding_rate_raw: float | None = None
@@ -98,7 +98,7 @@ class OpportunityBoardLeg(BaseModel):
 
 
 class SettlementEvent(BaseModel):
-    """结算窗口内的事件明细。"""
+    """结算事件。"""
 
     time: datetime
     kind: Literal["both", "long_only", "short_only"]
@@ -109,7 +109,7 @@ class SettlementEvent(BaseModel):
 
 
 class OpportunityBoardRow(BaseModel):
-    """board 表格单行数据。"""
+    """board 行。"""
 
     id: str
     symbol: str
@@ -135,7 +135,7 @@ class OpportunityBoardRow(BaseModel):
 
 
 class MarketBoardResponse(BaseModel):
-    """市场 board 聚合接口响应。"""
+    """board 响应。"""
 
     as_of: datetime = Field(default_factory=utc_now)
     total: int
@@ -145,14 +145,13 @@ class MarketBoardResponse(BaseModel):
 
 
 class ExecutionMode(str, Enum):
-    """执行模式。"""
+    """执行模式（仅自动）。"""
 
-    manual = "manual"
     auto = "auto"
 
 
 class ExchangeCredential(BaseModel):
-    """交易所 API 认证信息。"""
+    """交易所凭据。"""
 
     api_key: str
     api_secret: str
@@ -161,7 +160,7 @@ class ExchangeCredential(BaseModel):
 
 
 class CredentialStatus(BaseModel):
-    """交易所托管凭据状态（不包含明文）。"""
+    """托管凭据状态。"""
 
     exchange: SupportedExchange
     configured: bool
@@ -172,13 +171,13 @@ class CredentialStatus(BaseModel):
 
 
 class CredentialsResponse(BaseModel):
-    """交易所托管凭据状态列表响应。"""
+    """托管凭据状态列表响应。"""
 
     items: list[CredentialStatus] = Field(default_factory=list)
 
 
 class ExecutionPreviewRequest(BaseModel):
-    """开仓预估请求。"""
+    """预估请求。"""
 
     symbol: str
     long_exchange: SupportedExchange
@@ -194,7 +193,7 @@ class ExecutionPreviewRequest(BaseModel):
 
 
 class ExecutionPreviewResponse(BaseModel):
-    """开仓预估响应。"""
+    """预估响应。"""
 
     symbol: str
     long_exchange: SupportedExchange
@@ -207,15 +206,13 @@ class ExecutionPreviewResponse(BaseModel):
 
 
 class OpenPositionRequest(BaseModel):
-    """开仓请求。"""
+    """开仓请求（按名义金额换算数量）。"""
 
-    mode: ExecutionMode = ExecutionMode.manual
     symbol: str
     long_exchange: SupportedExchange
     short_exchange: SupportedExchange
-    quantity: float = Field(gt=0)
+    notional_usd: float = Field(gt=0)
     leverage: float | None = Field(default=None, gt=0)
-    notional_usd: float | None = Field(default=None, gt=0)
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
     note: str | None = None
 
@@ -228,13 +225,11 @@ class OpenPositionRequest(BaseModel):
 class ClosePositionRequest(BaseModel):
     """平仓请求。"""
 
-    mode: ExecutionMode = ExecutionMode.manual
     position_id: str | None = None
     symbol: str | None = None
     long_exchange: SupportedExchange | None = None
     short_exchange: SupportedExchange | None = None
-    long_quantity: float | None = Field(default=None, gt=0)
-    short_quantity: float | None = Field(default=None, gt=0)
+    notional_usd: float | None = Field(default=None, gt=0)
     leverage: float | None = Field(default=None, gt=0)
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
     note: str | None = None
@@ -243,21 +238,20 @@ class ClosePositionRequest(BaseModel):
     def validate_source(self) -> "ClosePositionRequest":
         if self.position_id:
             return self
-        required = [self.symbol, self.long_exchange, self.short_exchange, self.long_quantity, self.short_quantity]
+        required = [self.symbol, self.long_exchange, self.short_exchange, self.notional_usd]
         if any(value is None for value in required):
-            raise ValueError("未提供 position_id 时，必须提供 symbol/long_exchange/short_exchange/long_quantity/short_quantity")
+            raise ValueError("未提供 position_id 时，必须提供 symbol/long_exchange/short_exchange/notional_usd")
         self.symbol = self.symbol.upper()
         return self
 
 
 class HedgeRequest(BaseModel):
-    """对冲请求。"""
+    """对冲请求（按名义金额换算数量）。"""
 
-    mode: ExecutionMode = ExecutionMode.manual
     symbol: str
     exchange: SupportedExchange
     side: Literal["buy", "sell"]
-    quantity: float = Field(gt=0)
+    notional_usd: float = Field(gt=0)
     leverage: float | None = Field(default=None, gt=0)
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
     reason: str | None = None
@@ -271,7 +265,6 @@ class HedgeRequest(BaseModel):
 class EmergencyCloseRequest(BaseModel):
     """紧急全平请求。"""
 
-    mode: ExecutionMode = ExecutionMode.manual
     position_ids: list[str] | None = None
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
 
@@ -292,7 +285,7 @@ class ExecutionLegResult(BaseModel):
 
 
 class ExecutionActionResponse(BaseModel):
-    """执行接口统一返回。"""
+    """执行响应。"""
 
     success: bool
     action: str
@@ -369,8 +362,6 @@ class StrategyTemplateBase(BaseModel):
     symbol: str
     long_exchange: SupportedExchange
     short_exchange: SupportedExchange
-    mode: ExecutionMode = ExecutionMode.manual
-    quantity: float | None = Field(default=None, gt=0)
     notional_usd: float | None = Field(default=None, gt=0)
     leverage: float | None = Field(default=None, gt=0)
     hold_hours: float | None = Field(default=None, gt=0)
@@ -393,8 +384,6 @@ class StrategyTemplateUpdate(BaseModel):
     symbol: str | None = None
     long_exchange: SupportedExchange | None = None
     short_exchange: SupportedExchange | None = None
-    mode: ExecutionMode | None = None
-    quantity: float | None = Field(default=None, gt=0)
     notional_usd: float | None = Field(default=None, gt=0)
     leverage: float | None = Field(default=None, gt=0)
     hold_hours: float | None = Field(default=None, gt=0)
@@ -418,8 +407,6 @@ class StrategyTemplateRead(BaseModel):
     symbol: str
     long_exchange: str
     short_exchange: str
-    mode: str
-    quantity: float | None = None
     notional_usd: float | None = None
     leverage: float | None = None
     hold_hours: float | None = None

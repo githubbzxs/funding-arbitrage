@@ -20,8 +20,6 @@ describe('templates api', () => {
               symbol: 'BTCUSDT',
               long_exchange: 'okx',
               short_exchange: 'binance',
-              mode: 'manual',
-              quantity: 0.01,
               notional_usd: 1000,
               leverage: 5,
               hold_hours: 8,
@@ -53,8 +51,6 @@ describe('templates api', () => {
           symbol: 'ETHUSDT',
           long_exchange: 'bybit',
           short_exchange: 'okx',
-          mode: 'auto',
-          quantity: 0.5,
           notional_usd: 2000,
           leverage: 3,
           hold_hours: 4,
@@ -71,10 +67,8 @@ describe('templates api', () => {
       symbol: 'ETHUSDT',
       long_exchange: 'bybit',
       short_exchange: 'okx',
-      mode: 'auto',
     });
     expect(created.id).toBe('t2');
-    expect(created.mode).toBe('auto');
 
     const updated = await updateTemplate('t2', { name: '模板2-更新' });
     expect(updated.symbol).toBe('ETHUSDT');

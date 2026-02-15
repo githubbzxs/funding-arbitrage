@@ -50,8 +50,6 @@ function toTemplate(raw: GenericObject): StrategyTemplate {
     symbol: readString(raw, 'symbol'),
     long_exchange: readString(raw, 'long_exchange') as StrategyTemplate['long_exchange'],
     short_exchange: readString(raw, 'short_exchange') as StrategyTemplate['short_exchange'],
-    mode: readString(raw, 'mode') as StrategyTemplate['mode'],
-    quantity: readNumberOrNull(raw, 'quantity'),
     notional_usd: readNumberOrNull(raw, 'notional_usd'),
     leverage: readNumberOrNull(raw, 'leverage'),
     hold_hours: readNumberOrNull(raw, 'hold_hours'),

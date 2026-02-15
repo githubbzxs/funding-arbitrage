@@ -216,7 +216,7 @@ class CcxtMarketProvider:
                     oi_usd=None,
                     vol24h_usd=None,
                     max_leverage=leverage_map.get(canonical) or _resolve_row_leverage(row),
-                    mark_price=None,
+                    mark_price=self._resolve_mark_price(row),
                 )
                 if snapshot:
                     snapshots.append(snapshot)
@@ -519,3 +519,19 @@ class CcxtMarketProvider:
                 return parsed
 
         return 8.0
+
+    def _resolve_mark_price(self, row: dict[str, Any]) -> float | None:
+        info = row.get("info")
+        info_dict = info if isinstance(info, dict) else {}
+
+        for key in ("markPrice", "mark_price", "lastPrice", "indexPrice", "price"):
+            parsed = safe_float(row.get(key))
+            if parsed is not None and parsed > 0:
+                return parsed
+
+        for key in ("markPrice", "mark_price", "lastPrice", "indexPrice", "price"):
+            parsed = safe_float(info_dict.get(key))
+            if parsed is not None and parsed > 0:
+                return parsed
+
+        return None
