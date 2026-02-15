@@ -17,3 +17,12 @@ def test_legacy_credentials_routes_still_registered() -> None:
     assert "/api/credentials" in paths
     assert "/api/credentials/" in paths
     assert "/api/credentials/{exchange}" in paths
+
+
+def test_terminal_routes_registered() -> None:
+    paths = _route_paths()
+    assert "/api/templates" in paths
+    assert "/api/templates/" in paths
+    assert "/api/templates/{template_id}" in paths
+    assert "/api/risk-events" in paths
+    assert "/api/risk-events/{event_id}/resolve" in paths

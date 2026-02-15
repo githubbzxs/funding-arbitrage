@@ -360,3 +360,98 @@ class PositionsResponse(BaseModel):
 
     total: int
     items: list[PositionRead]
+
+
+class StrategyTemplateBase(BaseModel):
+    """策略模板基础字段。"""
+
+    name: str = Field(min_length=1, max_length=80)
+    symbol: str
+    long_exchange: SupportedExchange
+    short_exchange: SupportedExchange
+    mode: ExecutionMode = ExecutionMode.manual
+    quantity: float | None = Field(default=None, gt=0)
+    notional_usd: float | None = Field(default=None, gt=0)
+    leverage: float | None = Field(default=None, gt=0)
+    hold_hours: float | None = Field(default=None, gt=0)
+    note: str | None = None
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return value.upper()
+
+
+class StrategyTemplateCreate(StrategyTemplateBase):
+    """创建策略模板请求。"""
+
+
+class StrategyTemplateUpdate(BaseModel):
+    """更新策略模板请求。"""
+
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    symbol: str | None = None
+    long_exchange: SupportedExchange | None = None
+    short_exchange: SupportedExchange | None = None
+    mode: ExecutionMode | None = None
+    quantity: float | None = Field(default=None, gt=0)
+    notional_usd: float | None = Field(default=None, gt=0)
+    leverage: float | None = Field(default=None, gt=0)
+    hold_hours: float | None = Field(default=None, gt=0)
+    note: str | None = None
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.upper()
+
+
+class StrategyTemplateRead(BaseModel):
+    """策略模板读取模型。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    symbol: str
+    long_exchange: str
+    short_exchange: str
+    mode: str
+    quantity: float | None = None
+    notional_usd: float | None = None
+    leverage: float | None = None
+    hold_hours: float | None = None
+    note: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class StrategyTemplatesResponse(BaseModel):
+    """策略模板列表响应。"""
+
+    total: int
+    items: list[StrategyTemplateRead]
+
+
+class RiskEventRead(BaseModel):
+    """风险事件读取模型。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    event_type: str
+    severity: str
+    message: str
+    context: dict[str, Any] = Field(default_factory=dict)
+    resolved: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class RiskEventsResponse(BaseModel):
+    """风险事件列表响应。"""
+
+    total: int
+    items: list[RiskEventRead]

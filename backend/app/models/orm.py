@@ -101,3 +101,28 @@ class RiskEvent(Base):
         default=utc_now,
         onupdate=utc_now,
     )
+
+
+class StrategyTemplate(Base):
+    """套利策略模板。"""
+
+    __tablename__ = "strategy_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    symbol: Mapped[str] = mapped_column(String(40), index=True)
+    long_exchange: Mapped[str] = mapped_column(String(20), index=True)
+    short_exchange: Mapped[str] = mapped_column(String(20), index=True)
+    mode: Mapped[str] = mapped_column(String(16), default="manual")
+    quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notional_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    leverage: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hold_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        index=True,
+    )
