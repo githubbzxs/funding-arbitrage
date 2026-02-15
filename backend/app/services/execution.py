@@ -21,6 +21,8 @@ from app.models.schemas import (
     HedgeRequest,
     MarketSnapshot,
     OpenPositionRequest,
+    QuantityConvertRequest,
+    QuantityConvertResponse,
     SupportedExchange,
 )
 from app.services.arbitrage import scan_opportunities
@@ -223,19 +225,8 @@ class ExecutionService:
         session: AsyncSession,
         request: OpenPositionRequest,
     ) -> ExecutionActionResponse:
-        pricing_snapshots = await self._fetch_pricing_snapshots()
-        long_qty = self._calculate_quantity_from_notional(
-            snapshots=pricing_snapshots,
-            exchange=request.long_exchange,
-            symbol=request.symbol,
-            notional_usd=request.notional_usd,
-        )
-        short_qty = self._calculate_quantity_from_notional(
-            snapshots=pricing_snapshots,
-            exchange=request.short_exchange,
-            symbol=request.symbol,
-            notional_usd=request.notional_usd,
-        )
+        long_qty = request.quantity
+        short_qty = request.quantity
 
         position = Position(
             symbol=request.symbol,
@@ -247,7 +238,7 @@ class ExecutionService:
             status="opening",
             entry_spread_rate=await self._resolve_spread(request.symbol, request.long_exchange, request.short_exchange),
             opened_at=utc_now(),
-            extra={"notional_usd": request.notional_usd, "note": request.note},
+            extra={"quantity": request.quantity, "note": request.note},
         )
         session.add(position)
         await session.flush()
@@ -457,13 +448,7 @@ class ExecutionService:
         session: AsyncSession,
         request: HedgeRequest,
     ) -> ExecutionActionResponse:
-        pricing_snapshots = await self._fetch_pricing_snapshots()
-        quantity = self._calculate_quantity_from_notional(
-            snapshots=pricing_snapshots,
-            exchange=request.exchange,
-            symbol=request.symbol,
-            notional_usd=request.notional_usd,
-        )
+        quantity = request.quantity
 
         leg = await self._execute_leg(
             session=session,
@@ -496,6 +481,31 @@ class ExecutionService:
             legs=[leg],
             risk_event_id=risk_event_id,
             message="对冲执行完成" if success else "对冲失败",
+        )
+
+    async def convert_notional_to_quantity(self, request: QuantityConvertRequest) -> QuantityConvertResponse:
+        snapshots = await self._fetch_pricing_snapshots()
+        mark_price = self._find_mark_price(snapshots=snapshots, exchange="binance", symbol=request.symbol)
+        if mark_price is None or mark_price <= 0:
+            raise ValueError(f"无法根据名义金额换算数量：binance {request.symbol} 缺少有效标记价格")
+
+        quantity = request.notional_usd / mark_price
+        if quantity <= 0:
+            raise ValueError(f"换算后的下单数量无效：binance {request.symbol}")
+
+        timestamp = utc_now()
+        for row in snapshots:
+            if row.exchange == "binance" and row.symbol == request.symbol:
+                timestamp = row.updated_at
+                break
+
+        return QuantityConvertResponse(
+            symbol=request.symbol,
+            exchange="binance",
+            notional_usd=request.notional_usd,
+            mark_price=mark_price,
+            quantity=quantity,
+            timestamp=timestamp,
         )
 
     async def emergency_close(
@@ -708,54 +718,24 @@ class ExecutionService:
                 "short_qty": position.short_qty,
             }
 
-        pricing_snapshots = await self._fetch_pricing_snapshots()
         assert request.symbol is not None
         assert request.long_exchange is not None
         assert request.short_exchange is not None
-        assert request.notional_usd is not None
-
-        long_qty = self._calculate_quantity_from_notional(
-            snapshots=pricing_snapshots,
-            exchange=request.long_exchange,
-            symbol=request.symbol,
-            notional_usd=request.notional_usd,
-        )
-        short_qty = self._calculate_quantity_from_notional(
-            snapshots=pricing_snapshots,
-            exchange=request.short_exchange,
-            symbol=request.symbol,
-            notional_usd=request.notional_usd,
-        )
+        assert request.long_quantity is not None
+        assert request.short_quantity is not None
 
         return {
             "position": None,
             "symbol": request.symbol,
             "long_exchange": request.long_exchange,
             "short_exchange": request.short_exchange,
-            "long_qty": long_qty,
-            "short_qty": short_qty,
+            "long_qty": request.long_quantity,
+            "short_qty": request.short_quantity,
         }
 
     async def _fetch_pricing_snapshots(self) -> list[MarketSnapshot]:
         snapshots_resp = await self.market_data_service.fetch_snapshots()
         return snapshots_resp.snapshots
-
-    def _calculate_quantity_from_notional(
-        self,
-        *,
-        snapshots: list[MarketSnapshot],
-        exchange: SupportedExchange,
-        symbol: str,
-        notional_usd: float,
-    ) -> float:
-        price = self._find_mark_price(snapshots=snapshots, exchange=exchange, symbol=symbol)
-        if price is None or price <= 0:
-            raise ValueError(f"无法根据名义金额换算数量：{exchange} {symbol} 缺少有效标记价格")
-
-        quantity = notional_usd / price
-        if quantity <= 0:
-            raise ValueError(f"换算后的下单数量无效：{exchange} {symbol}")
-        return quantity
 
     def _find_mark_price(
         self,

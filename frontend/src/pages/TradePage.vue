@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { executeAction } from '../api/execution';
+import { convertNotionalByBinance, executeAction } from '../api/execution';
 import { fetchOrders, fetchPositions } from '../api/records';
 import { createTemplate, deleteTemplate, fetchTemplates, updateTemplate } from '../api/templates';
 import type {
@@ -35,6 +35,9 @@ const currentAction = ref<ExecutionAction>('open');
 const busy = ref(false);
 const errorMessage = ref('');
 const resultText = ref('');
+const convertBusy = ref(false);
+const convertError = ref('');
+const convertMessage = ref('');
 const positionsCount = ref(0);
 const ordersCount = ref(0);
 const useManualCredentials = ref(false);
@@ -53,6 +56,7 @@ const form = reactive({
   shortExchange: '' as SupportedExchange | '',
   hedgeExchange: '' as SupportedExchange | '',
   hedgeSide: 'sell' as 'buy' | 'sell',
+  quantity: 0.001,
   notionalUsd: 1000,
   leverage: 5,
   holdHours: 8,
@@ -167,7 +171,7 @@ function buildPayload(): Record<string, unknown> {
       symbol: form.symbol,
       long_exchange: form.longExchange,
       short_exchange: form.shortExchange,
-      notional_usd: form.notionalUsd,
+      quantity: form.quantity,
       leverage: form.leverage,
       credentials,
       note: form.note || undefined,
@@ -179,7 +183,7 @@ function buildPayload(): Record<string, unknown> {
       symbol: form.symbol,
       long_exchange: form.longExchange,
       short_exchange: form.shortExchange,
-      notional_usd: form.notionalUsd,
+      quantity: form.quantity,
       leverage: form.leverage,
       credentials,
       note: form.note || undefined,
@@ -191,7 +195,7 @@ function buildPayload(): Record<string, unknown> {
       symbol: form.symbol,
       exchange: form.hedgeExchange,
       side: form.hedgeSide,
-      notional_usd: form.notionalUsd,
+      quantity: form.quantity,
       leverage: form.leverage,
       credentials,
       reason: form.note || undefined,
@@ -209,6 +213,9 @@ function applyTemplate(template: StrategyTemplate): void {
   form.longExchange = template.long_exchange;
   form.shortExchange = template.short_exchange;
   form.hedgeExchange = template.long_exchange;
+  if (typeof template.quantity === 'number' && Number.isFinite(template.quantity)) {
+    form.quantity = template.quantity;
+  }
   if (typeof template.notional_usd === 'number' && Number.isFinite(template.notional_usd)) {
     form.notionalUsd = template.notional_usd;
   }
@@ -239,6 +246,7 @@ function buildTemplatePayload(): StrategyTemplatePayload {
     symbol: form.symbol.toUpperCase(),
     long_exchange: form.longExchange,
     short_exchange: form.shortExchange,
+    quantity: form.quantity,
     notional_usd: form.notionalUsd,
     leverage: form.leverage,
     hold_hours: form.holdHours,
@@ -343,6 +351,32 @@ async function refreshTradeData(): Promise<void> {
   } catch {
     positionsCount.value = 0;
     ordersCount.value = 0;
+  }
+}
+
+async function convertQuantityByBinance(): Promise<void> {
+  convertError.value = '';
+  convertMessage.value = '';
+
+  const symbol = form.symbol.trim().toUpperCase();
+  if (!symbol) {
+    convertError.value = '请先填写币对后再换算';
+    return;
+  }
+  if (!Number.isFinite(form.notionalUsd) || form.notionalUsd <= 0) {
+    convertError.value = '请输入有效的名义金额';
+    return;
+  }
+
+  convertBusy.value = true;
+  try {
+    const result = await convertNotionalByBinance(symbol, form.notionalUsd);
+    form.quantity = result.quantity;
+    convertMessage.value = `已按 Binance 标记价 ${result.mark_price.toFixed(6)} 换算，数量 ${result.quantity.toFixed(8)}`;
+  } catch (error) {
+    convertError.value = error instanceof Error ? error.message : '换算失败';
+  } finally {
+    convertBusy.value = false;
   }
 }
 
@@ -458,7 +492,12 @@ onMounted(async () => {
               </select>
             </label>
 
-            <label v-if="currentAction !== 'emergency-close'">
+            <label v-if="currentAction !== 'preview' && currentAction !== 'emergency-close'">
+              <span>数量</span>
+              <input v-model.number="form.quantity" type="number" min="0.000001" step="0.000001" />
+            </label>
+
+            <label v-if="currentAction === 'preview'">
               <span>名义金额 (USD)</span>
               <input v-model.number="form.notionalUsd" type="number" min="10" step="10" />
             </label>
@@ -482,6 +521,21 @@ onMounted(async () => {
               <span>备注</span>
               <textarea v-model.trim="form.note" rows="2" placeholder="可选" />
             </label>
+          </div>
+
+          <div v-if="currentAction !== 'preview' && currentAction !== 'emergency-close'" class="convert-box">
+            <p class="convert-title">名义金额换算（统一使用 Binance 标记价格）</p>
+            <div class="convert-grid">
+              <label>
+                <span>名义金额 (USD)</span>
+                <input v-model.number="form.notionalUsd" type="number" min="10" step="10" />
+              </label>
+              <button type="button" class="mini" :disabled="convertBusy" @click="convertQuantityByBinance">
+                {{ convertBusy ? '换算中...' : '换算为数量' }}
+              </button>
+            </div>
+            <p v-if="convertError" class="feedback error">{{ convertError }}</p>
+            <p v-if="convertMessage" class="feedback ok">{{ convertMessage }}</p>
           </div>
 
           <button type="button" class="submit" :disabled="busy" @click="onSubmit">
@@ -735,6 +789,27 @@ onMounted(async () => {
   grid-column: 1 / -1;
 }
 
+.convert-box {
+  border: 1px solid var(--line-soft);
+  background: #101823;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.convert-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.convert-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
 .submit {
   height: 36px;
   border: 1px solid rgba(0, 199, 166, 0.9);
@@ -908,6 +983,10 @@ onMounted(async () => {
   }
 
   .template-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .convert-grid {
     grid-template-columns: 1fr;
   }
 }

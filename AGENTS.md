@@ -148,3 +148,8 @@
   - Why：减少手工换算误差，统一下单口径并收敛交互复杂度。
   - Impact：`backend/app/models/schemas.py`，`backend/app/services/execution.py`，`backend/app/api/execution.py`，`backend/app/exchanges/providers/ccxt_market.py`，`frontend/src/pages/TradePage.vue`，`frontend/src/types/market.ts`，`frontend/src/api/templates.ts`
   - Verify：`cd backend && pytest -q`，`cd frontend && npm test`，`cd frontend && npm run build`
+
+- **[2026-02-15] 执行改回数量下单并新增 Binance 统一换算工具**：`open/close/hedge` 重新使用 `quantity` 入参；新增 `POST /api/execution/convert`，按 Binance 标记价格将 `notional_usd` 换算为数量；交易页新增“名义金额换算（Binance）”区块并支持一键回填数量；策略模板恢复 `quantity` 字段读写。
+  - Why：避免因单所标记价缺失导致下单失败，同时保留名义金额快速换算的便利性。
+  - Impact：`backend/app/models/schemas.py`，`backend/app/services/execution.py`，`backend/app/api/execution.py`，`backend/app/api/templates.py`，`backend/tests/test_execution_notional_flow.py`，`backend/tests/test_templates_api.py`，`frontend/src/pages/TradePage.vue`，`frontend/src/api/execution.ts`，`frontend/src/types/market.ts`，`frontend/src/api/templates.ts`，`frontend/src/api/templates.test.ts`
+  - Verify：`cd backend && pytest -q`，`cd frontend && npm test`，`cd frontend && npm run build`

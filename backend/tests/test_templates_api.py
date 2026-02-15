@@ -28,6 +28,7 @@ async def test_template_crud(session: AsyncSession) -> None:
             symbol="btcusdt",
             long_exchange="okx",
             short_exchange="binance",
+            quantity=0.01,
             leverage=6,
             notional_usd=1500,
             hold_hours=8,
@@ -37,6 +38,7 @@ async def test_template_crud(session: AsyncSession) -> None:
     )
     assert created.symbol == "BTCUSDT"
     assert created.name == "BTC-OKX-BINANCE"
+    assert created.quantity == pytest.approx(0.01)
 
     listed = await list_templates(limit=200, session=session)
     assert listed.total == 1
@@ -46,11 +48,13 @@ async def test_template_crud(session: AsyncSession) -> None:
         created.id,
         StrategyTemplateUpdate(
             name="BTC-OKX-BINANCE-V2",
+            quantity=0.02,
             notional_usd=2000,
         ),
         session,
     )
     assert updated.name == "BTC-OKX-BINANCE-V2"
+    assert updated.quantity == pytest.approx(0.02)
     assert updated.notional_usd == pytest.approx(2000)
 
     deleted = await delete_template(created.id, session)

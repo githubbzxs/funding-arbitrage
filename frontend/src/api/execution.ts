@@ -1,4 +1,4 @@
-﻿import type { ExecutionAction, ExecutionPayload } from '../types/market';
+import type { ExecutionAction, ExecutionPayload, NotionalConvertResponse } from '../types/market';
 import { request } from './http';
 
 const ACTION_PATH_MAP: Record<ExecutionAction, string[]> = {
@@ -22,4 +22,11 @@ export async function executeAction(action: ExecutionAction, payload: ExecutionP
   }
 
   throw lastError instanceof Error ? lastError : new Error('执行动作失败');
+}
+
+export async function convertNotionalByBinance(symbol: string, notionalUsd: number): Promise<NotionalConvertResponse> {
+  return request<NotionalConvertResponse>('/api/execution/convert', 'POST', {
+    symbol,
+    notional_usd: notionalUsd,
+  });
 }

@@ -10,6 +10,8 @@ from app.models.schemas import (
     ExecutionPreviewResponse,
     HedgeRequest,
     OpenPositionRequest,
+    QuantityConvertRequest,
+    QuantityConvertResponse,
 )
 from app.services.container import execution_service
 
@@ -59,6 +61,16 @@ async def hedge_position(
 
     try:
         return await execution_service.hedge(session, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/convert", response_model=QuantityConvertResponse)
+async def convert_notional_to_quantity(request: QuantityConvertRequest) -> QuantityConvertResponse:
+    """按 Binance 标记价格将名义金额换算为下单数量。"""
+
+    try:
+        return await execution_service.convert_notional_to_quantity(request)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

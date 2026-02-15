@@ -47,7 +47,7 @@ async def create_template(
         long_exchange=request.long_exchange,
         short_exchange=request.short_exchange,
         mode=ExecutionMode.auto.value,
-        quantity=None,
+        quantity=request.quantity,
         notional_usd=request.notional_usd,
         leverage=request.leverage,
         hold_hours=request.hold_hours,

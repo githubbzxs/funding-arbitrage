@@ -72,6 +72,7 @@ export interface StrategyTemplate {
   symbol: string;
   long_exchange: SupportedExchange;
   short_exchange: SupportedExchange;
+  quantity: number | null;
   notional_usd: number | null;
   leverage: number | null;
   hold_hours: number | null;
@@ -85,6 +86,7 @@ export interface StrategyTemplatePayload {
   symbol: string;
   long_exchange: SupportedExchange;
   short_exchange: SupportedExchange;
+  quantity?: number | null;
   notional_usd?: number | null;
   leverage?: number | null;
   hold_hours?: number | null;
@@ -96,8 +98,18 @@ export interface StrategyTemplateUpdatePayload {
   symbol?: string;
   long_exchange?: SupportedExchange;
   short_exchange?: SupportedExchange;
+  quantity?: number | null;
   notional_usd?: number | null;
   leverage?: number | null;
   hold_hours?: number | null;
   note?: string | null;
+}
+
+export interface NotionalConvertResponse {
+  symbol: string;
+  exchange: 'binance';
+  notional_usd: number;
+  mark_price: number;
+  quantity: number;
+  timestamp: string;
 }

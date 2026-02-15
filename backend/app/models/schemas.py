@@ -206,12 +206,12 @@ class ExecutionPreviewResponse(BaseModel):
 
 
 class OpenPositionRequest(BaseModel):
-    """开仓请求（按名义金额换算数量）。"""
+    """开仓请求（按数量）。"""
 
     symbol: str
     long_exchange: SupportedExchange
     short_exchange: SupportedExchange
-    notional_usd: float = Field(gt=0)
+    quantity: float = Field(gt=0)
     leverage: float | None = Field(default=None, gt=0)
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
     note: str | None = None
@@ -229,7 +229,9 @@ class ClosePositionRequest(BaseModel):
     symbol: str | None = None
     long_exchange: SupportedExchange | None = None
     short_exchange: SupportedExchange | None = None
-    notional_usd: float | None = Field(default=None, gt=0)
+    quantity: float | None = Field(default=None, gt=0)
+    long_quantity: float | None = Field(default=None, gt=0)
+    short_quantity: float | None = Field(default=None, gt=0)
     leverage: float | None = Field(default=None, gt=0)
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
     note: str | None = None
@@ -238,20 +240,27 @@ class ClosePositionRequest(BaseModel):
     def validate_source(self) -> "ClosePositionRequest":
         if self.position_id:
             return self
-        required = [self.symbol, self.long_exchange, self.short_exchange, self.notional_usd]
+        required = [self.symbol, self.long_exchange, self.short_exchange]
         if any(value is None for value in required):
-            raise ValueError("未提供 position_id 时，必须提供 symbol/long_exchange/short_exchange/notional_usd")
+            raise ValueError("未提供 position_id 时，必须提供 symbol/long_exchange/short_exchange")
+        if self.quantity is not None:
+            if self.long_quantity is None:
+                self.long_quantity = self.quantity
+            if self.short_quantity is None:
+                self.short_quantity = self.quantity
+        if self.long_quantity is None or self.short_quantity is None:
+            raise ValueError("未提供 position_id 时，必须提供 quantity 或 long_quantity+short_quantity")
         self.symbol = self.symbol.upper()
         return self
 
 
 class HedgeRequest(BaseModel):
-    """对冲请求（按名义金额换算数量）。"""
+    """对冲请求（按数量）。"""
 
     symbol: str
     exchange: SupportedExchange
     side: Literal["buy", "sell"]
-    notional_usd: float = Field(gt=0)
+    quantity: float = Field(gt=0)
     leverage: float | None = Field(default=None, gt=0)
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
     reason: str | None = None
@@ -267,6 +276,29 @@ class EmergencyCloseRequest(BaseModel):
 
     position_ids: list[str] | None = None
     credentials: dict[SupportedExchange, ExchangeCredential] = Field(default_factory=dict)
+
+
+class QuantityConvertRequest(BaseModel):
+    """名义金额换算数量请求（统一使用 Binance 标记价格）。"""
+
+    symbol: str
+    notional_usd: float = Field(gt=0)
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return value.upper()
+
+
+class QuantityConvertResponse(BaseModel):
+    """名义金额换算数量响应。"""
+
+    symbol: str
+    exchange: Literal["binance"] = "binance"
+    notional_usd: float
+    mark_price: float
+    quantity: float
+    timestamp: datetime = Field(default_factory=utc_now)
 
 
 class ExecutionLegResult(BaseModel):
@@ -362,6 +394,7 @@ class StrategyTemplateBase(BaseModel):
     symbol: str
     long_exchange: SupportedExchange
     short_exchange: SupportedExchange
+    quantity: float | None = Field(default=None, gt=0)
     notional_usd: float | None = Field(default=None, gt=0)
     leverage: float | None = Field(default=None, gt=0)
     hold_hours: float | None = Field(default=None, gt=0)
@@ -384,6 +417,7 @@ class StrategyTemplateUpdate(BaseModel):
     symbol: str | None = None
     long_exchange: SupportedExchange | None = None
     short_exchange: SupportedExchange | None = None
+    quantity: float | None = Field(default=None, gt=0)
     notional_usd: float | None = Field(default=None, gt=0)
     leverage: float | None = Field(default=None, gt=0)
     hold_hours: float | None = Field(default=None, gt=0)
@@ -407,6 +441,7 @@ class StrategyTemplateRead(BaseModel):
     symbol: str
     long_exchange: str
     short_exchange: str
+    quantity: float | None = None
     notional_usd: float | None = None
     leverage: float | None = None
     hold_hours: float | None = None

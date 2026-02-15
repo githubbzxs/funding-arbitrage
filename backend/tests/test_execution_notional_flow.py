@@ -12,6 +12,7 @@ from app.models.schemas import (
     MarketSnapshot,
     MarketSnapshotsResponse,
     OpenPositionRequest,
+    QuantityConvertRequest,
 )
 from app.services.execution import ExecutionService, GatewayResult
 
@@ -95,7 +96,7 @@ async def session() -> AsyncSession:
 
 
 @pytest.mark.asyncio
-async def test_execution_uses_notional_and_auto_mode(session: AsyncSession) -> None:
+async def test_execution_uses_quantity_and_auto_mode(session: AsyncSession) -> None:
     service = ExecutionService(
         market_data_service=_FakeMarketDataService(),
         credential_service=_FakeCredentialService(),
@@ -109,7 +110,7 @@ async def test_execution_uses_notional_and_auto_mode(session: AsyncSession) -> N
             symbol="BTCUSDT",
             long_exchange="binance",
             short_exchange="okx",
-            notional_usd=1000,
+            quantity=0.01,
             leverage=5,
             credentials={},
         ),
@@ -134,7 +135,7 @@ async def test_execution_uses_notional_and_auto_mode(session: AsyncSession) -> N
             symbol="BTCUSDT",
             long_exchange="binance",
             short_exchange="okx",
-            notional_usd=2000,
+            quantity=0.02,
             leverage=5,
             credentials={},
         ),
@@ -151,7 +152,7 @@ async def test_execution_uses_notional_and_auto_mode(session: AsyncSession) -> N
             symbol="BTCUSDT",
             exchange="binance",
             side="sell",
-            notional_usd=500,
+            quantity=0.005,
             leverage=3,
             credentials={},
             reason="unit-test",
@@ -161,3 +162,23 @@ async def test_execution_uses_notional_and_auto_mode(session: AsyncSession) -> N
     assert hedge_result.mode == ExecutionMode.auto
     assert len(gateway.calls) == 5
     assert gateway.calls[4]["quantity"] == pytest.approx(0.005)
+
+
+@pytest.mark.asyncio
+async def test_convert_notional_to_quantity_uses_binance_mark_price(session: AsyncSession) -> None:
+    service = ExecutionService(
+        market_data_service=_FakeMarketDataService(),
+        credential_service=_FakeCredentialService(),
+    )
+
+    result = await service.convert_notional_to_quantity(
+        QuantityConvertRequest(
+            symbol="BTCUSDT",
+            notional_usd=1500,
+        )
+    )
+
+    assert result.exchange == "binance"
+    assert result.symbol == "BTCUSDT"
+    assert result.mark_price == pytest.approx(100_000)
+    assert result.quantity == pytest.approx(0.015)
