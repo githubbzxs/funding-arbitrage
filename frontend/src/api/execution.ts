@@ -1,4 +1,4 @@
-import type { ExecutionAction, ExecutionPayload } from '../types/market';
+﻿import type { ExecutionAction, ExecutionPayload } from '../types/market';
 import { request } from './http';
 
 const ACTION_PATH_MAP: Record<ExecutionAction, string[]> = {
@@ -6,7 +6,7 @@ const ACTION_PATH_MAP: Record<ExecutionAction, string[]> = {
   open: ['/api/execution/open'],
   close: ['/api/execution/close'],
   hedge: ['/api/execution/hedge'],
-  'emergency-close': ['/api/execution/emergency-close']
+  'emergency-close': ['/api/execution/emergency-close'],
 };
 
 export async function executeAction(action: ExecutionAction, payload: ExecutionPayload): Promise<unknown> {

@@ -1,4 +1,4 @@
-import type { ExchangeCredential } from '../types/market';
+﻿import type { ExchangeCredential } from '../types/market';
 import { request } from './http';
 
 type GenericObject = Record<string, unknown>;
@@ -45,7 +45,7 @@ export async function fetchCredentialStatuses(): Promise<CredentialStatus[]> {
     api_key_masked: readString(raw, 'api_key_masked'),
     has_passphrase: Boolean(raw.has_passphrase),
     testnet: readBool(raw, 'testnet'),
-    updated_at: readString(raw, 'updated_at')
+    updated_at: readString(raw, 'updated_at'),
   }));
 }
 

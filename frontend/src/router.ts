@@ -1,7 +1,6 @@
-import { createRouter, createWebHistory } from 'vue-router';
+﻿import { createRouter, createWebHistory } from 'vue-router';
 import ApiSettingsPage from './pages/ApiSettingsPage.vue';
-import PairDetailPage from './pages/PairDetailPage.vue';
-import ScannerPage from './pages/ScannerPage.vue';
+import MonitorPage from './pages/MonitorPage.vue';
 import TradePage from './pages/TradePage.vue';
 
 const router = createRouter({
@@ -9,29 +8,24 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/scanner'
-    },
-    {
-      path: '/scanner',
-      name: 'scanner',
-      component: ScannerPage
-    },
-    {
-      path: '/scanner/:symbol/:long/:short',
-      name: 'scanner-detail',
-      component: PairDetailPage
+      redirect: '/trade',
     },
     {
       path: '/trade',
       name: 'trade',
-      component: TradePage
+      component: TradePage,
+    },
+    {
+      path: '/monitor',
+      name: 'monitor',
+      component: MonitorPage,
     },
     {
       path: '/settings/api',
       name: 'settings-api',
-      component: ApiSettingsPage
-    }
-  ]
+      component: ApiSettingsPage,
+    },
+  ],
 });
 
 export default router;

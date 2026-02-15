@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { deleteCredential, fetchCredentialStatuses, upsertCredential, type CredentialStatus } from '../api/credentials';
 
@@ -30,7 +30,7 @@ const forms = ref<StoredCredentialForm[]>(
     passphrase: '',
     testnet: false,
     saving: false,
-    error: ''
+    error: '',
   }))
 );
 
@@ -83,7 +83,7 @@ async function saveStored(formValue: StoredCredentialForm): Promise<void> {
       api_key: apiKey,
       api_secret: apiSecret,
       passphrase: passphrase || undefined,
-      testnet: formValue.testnet
+      testnet: formValue.testnet,
     });
     formValue.apiKey = '';
     formValue.apiSecret = '';

@@ -1,24 +1,21 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
 
 const route = useRoute();
 
 const navItems = [
-  { label: '扫描看板', to: '/scanner' },
   { label: '交易执行', to: '/trade' },
-  { label: 'API设置', to: '/settings/api' }
+  { label: '监控终端', to: '/monitor' },
+  { label: 'API 设置', to: '/settings/api' },
 ];
 
 const pageHint = computed(() => {
-  if (route.path.startsWith('/scanner/')) {
-    return '机会详情与交易入口';
-  }
-  if (route.path.startsWith('/scanner')) {
-    return '跨交易所资金费率机会扫描';
-  }
   if (route.path.startsWith('/trade')) {
-    return '下单执行与风险控制';
+    return '模板驱动下单、风控动作与执行反馈';
+  }
+  if (route.path.startsWith('/monitor')) {
+    return '实时查看仓位、订单与风险事件状态';
   }
   if (route.path.startsWith('/settings/api')) {
     return '后端托管 API 凭据管理';

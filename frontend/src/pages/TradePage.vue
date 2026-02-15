@@ -1,17 +1,24 @@
-<script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+﻿<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { executeAction } from '../api/execution';
-import { fetchOrders, fetchPositions } from '../api/market';
-import type { ExecutionAction, ExecutionRequest } from '../types/market';
+import { fetchOrders, fetchPositions } from '../api/records';
+import { createTemplate, deleteTemplate, fetchTemplates, updateTemplate } from '../api/templates';
+import type {
+  ExecutionAction,
+  ExecutionRequest,
+  StrategyTemplate,
+  StrategyTemplatePayload,
+  SupportedExchange,
+} from '../types/market';
 
-const EXCHANGE_OPTIONS = ['binance', 'okx', 'bybit', 'bitget', 'gateio'] as const;
+const EXCHANGE_OPTIONS: SupportedExchange[] = ['binance', 'okx', 'bybit', 'bitget', 'gateio'];
 const ACTION_OPTIONS: Array<{ label: string; value: ExecutionAction }> = [
   { label: '预览', value: 'preview' },
   { label: '开仓', value: 'open' },
   { label: '平仓', value: 'close' },
-  { label: '一键对冲', value: 'hedge' },
-  { label: '紧急全平', value: 'emergency-close' }
+  { label: '对冲', value: 'hedge' },
+  { label: '紧急全平', value: 'emergency-close' },
 ];
 
 type CredentialForm = {
@@ -32,38 +39,46 @@ const positionsCount = ref(0);
 const ordersCount = ref(0);
 const useManualCredentials = ref(false);
 
+const templatesLoading = ref(false);
+const templateBusy = ref(false);
+const templateError = ref('');
+const templateMessage = ref('');
+const templates = ref<StrategyTemplate[]>([]);
+const selectedTemplateId = ref('');
+const templateName = ref('');
+
 const form = reactive({
   mode: 'manual' as 'manual' | 'auto',
   symbol: '',
-  longExchange: '',
-  shortExchange: '',
-  hedgeExchange: '',
+  longExchange: '' as SupportedExchange | '',
+  shortExchange: '' as SupportedExchange | '',
+  hedgeExchange: '' as SupportedExchange | '',
   hedgeSide: 'sell' as 'buy' | 'sell',
   quantity: 1,
   notionalUsd: 1000,
   leverage: 5,
   holdHours: 8,
   positionIdsText: '',
-  note: ''
+  note: '',
 });
 
 const longCredential = reactive<CredentialForm>({
   apiKey: '',
   apiSecret: '',
   passphrase: '',
-  testnet: false
+  testnet: false,
 });
 const shortCredential = reactive<CredentialForm>({
   apiKey: '',
   apiSecret: '',
   passphrase: '',
-  testnet: false
+  testnet: false,
 });
 const hedgeCredential = reactive<CredentialForm>({
   apiKey: '',
   apiSecret: '',
   passphrase: '',
-  testnet: false
+  testnet: false,
 });
 
 function readQueryString(name: string): string {
@@ -88,13 +103,9 @@ function normalizeAction(value: string): ExecutionAction {
 function hydrateFromRoute(): void {
   currentAction.value = normalizeAction(readQueryString('action').toLowerCase());
   form.symbol = readQueryString('symbol').toUpperCase() || form.symbol;
-  form.longExchange = readQueryString('long').toLowerCase() || form.longExchange;
-  form.shortExchange = readQueryString('short').toLowerCase() || form.shortExchange;
+  form.longExchange = (readQueryString('long').toLowerCase() as SupportedExchange) || form.longExchange;
+  form.shortExchange = (readQueryString('short').toLowerCase() as SupportedExchange) || form.shortExchange;
   form.hedgeExchange = form.longExchange || form.shortExchange || form.hedgeExchange;
-}
-
-function selectAction(action: ExecutionAction): void {
-  currentAction.value = action;
 }
 
 function hasCredential(formValue: CredentialForm): boolean {
@@ -106,7 +117,7 @@ function toCredential(formValue: CredentialForm): Record<string, unknown> {
     api_key: formValue.apiKey.trim(),
     api_secret: formValue.apiSecret.trim(),
     passphrase: formValue.passphrase.trim() || undefined,
-    testnet: formValue.testnet
+    testnet: formValue.testnet,
   };
 }
 
@@ -149,7 +160,7 @@ function buildPayload(): Record<string, unknown> {
       short_exchange: form.shortExchange,
       notional_usd: form.notionalUsd,
       hold_hours: form.holdHours,
-      taker_fee_bps: 6
+      taker_fee_bps: 6,
     };
   }
 
@@ -163,7 +174,7 @@ function buildPayload(): Record<string, unknown> {
       leverage: form.leverage,
       notional_usd: form.notionalUsd,
       credentials,
-      note: form.note || undefined
+      note: form.note || undefined,
     };
   }
 
@@ -177,7 +188,7 @@ function buildPayload(): Record<string, unknown> {
       short_quantity: form.quantity,
       leverage: form.leverage,
       credentials,
-      note: form.note || undefined
+      note: form.note || undefined,
     };
   }
 
@@ -190,15 +201,152 @@ function buildPayload(): Record<string, unknown> {
       quantity: form.quantity,
       leverage: form.leverage,
       credentials,
-      reason: form.note || undefined
+      reason: form.note || undefined,
     };
   }
 
   return {
     mode: form.mode,
     position_ids: parsePositionIds(),
-    credentials
+    credentials,
   };
+}
+
+function applyTemplate(template: StrategyTemplate): void {
+  form.symbol = template.symbol;
+  form.longExchange = template.long_exchange;
+  form.shortExchange = template.short_exchange;
+  form.hedgeExchange = template.long_exchange;
+  form.mode = template.mode;
+  if (typeof template.quantity === 'number' && Number.isFinite(template.quantity)) {
+    form.quantity = template.quantity;
+  }
+  if (typeof template.notional_usd === 'number' && Number.isFinite(template.notional_usd)) {
+    form.notionalUsd = template.notional_usd;
+  }
+  if (typeof template.leverage === 'number' && Number.isFinite(template.leverage)) {
+    form.leverage = template.leverage;
+  }
+  if (typeof template.hold_hours === 'number' && Number.isFinite(template.hold_hours)) {
+    form.holdHours = template.hold_hours;
+  }
+  form.note = template.note ?? '';
+  templateName.value = template.name;
+}
+
+function buildTemplatePayload(): StrategyTemplatePayload {
+  const name = templateName.value.trim();
+  if (!name) {
+    throw new Error('请先填写模板名称');
+  }
+  if (!form.symbol.trim()) {
+    throw new Error('请先填写币对后再保存模板');
+  }
+  if (!form.longExchange || !form.shortExchange) {
+    throw new Error('请先选择多头与空头交易所后再保存模板');
+  }
+
+  return {
+    name,
+    symbol: form.symbol.toUpperCase(),
+    long_exchange: form.longExchange,
+    short_exchange: form.shortExchange,
+    mode: form.mode,
+    quantity: form.quantity,
+    notional_usd: form.notionalUsd,
+    leverage: form.leverage,
+    hold_hours: form.holdHours,
+    note: form.note || null,
+  };
+}
+
+async function loadTemplates(): Promise<void> {
+  templatesLoading.value = true;
+  templateError.value = '';
+  try {
+    const next = await fetchTemplates();
+    templates.value = next;
+
+    if (selectedTemplateId.value) {
+      const current = next.find((item) => item.id === selectedTemplateId.value);
+      if (!current) {
+        selectedTemplateId.value = '';
+      }
+    }
+  } catch (error) {
+    templateError.value = error instanceof Error ? error.message : '加载模板失败';
+  } finally {
+    templatesLoading.value = false;
+  }
+}
+
+async function saveAsTemplate(): Promise<void> {
+  templateError.value = '';
+  templateMessage.value = '';
+  templateBusy.value = true;
+  try {
+    const payload = buildTemplatePayload();
+    const created = await createTemplate(payload);
+    selectedTemplateId.value = created.id;
+    await loadTemplates();
+    templateMessage.value = '模板已创建';
+  } catch (error) {
+    templateError.value = error instanceof Error ? error.message : '创建模板失败';
+  } finally {
+    templateBusy.value = false;
+  }
+}
+
+async function updateCurrentTemplate(): Promise<void> {
+  if (!selectedTemplateId.value) {
+    templateError.value = '请先选择一个模板再更新';
+    return;
+  }
+  templateError.value = '';
+  templateMessage.value = '';
+  templateBusy.value = true;
+  try {
+    const payload = buildTemplatePayload();
+    const updated = await updateTemplate(selectedTemplateId.value, payload);
+    selectedTemplateId.value = updated.id;
+    await loadTemplates();
+    templateMessage.value = '模板已更新';
+  } catch (error) {
+    templateError.value = error instanceof Error ? error.message : '更新模板失败';
+  } finally {
+    templateBusy.value = false;
+  }
+}
+
+async function removeCurrentTemplate(): Promise<void> {
+  if (!selectedTemplateId.value) {
+    templateError.value = '请先选择一个模板再删除';
+    return;
+  }
+  templateError.value = '';
+  templateMessage.value = '';
+  templateBusy.value = true;
+  try {
+    await deleteTemplate(selectedTemplateId.value);
+    selectedTemplateId.value = '';
+    templateName.value = '';
+    await loadTemplates();
+    templateMessage.value = '模板已删除';
+  } catch (error) {
+    templateError.value = error instanceof Error ? error.message : '删除模板失败';
+  } finally {
+    templateBusy.value = false;
+  }
+}
+
+function onTemplateSelect(event: Event): void {
+  const target = event.target as HTMLSelectElement;
+  const templateId = target.value;
+  selectedTemplateId.value = templateId;
+  const template = templates.value.find((item) => item.id === templateId);
+  if (template) {
+    applyTemplate(template);
+  }
 }
 
 async function refreshTradeData(): Promise<void> {
@@ -218,7 +366,7 @@ async function onSubmit(): Promise<void> {
   busy.value = true;
   const request: ExecutionRequest = {
     action: currentAction.value,
-    payload: buildPayload()
+    payload: buildPayload(),
   };
   try {
     const result = await executeAction(request.action, request.payload);
@@ -246,20 +394,58 @@ watch(
   { immediate: true }
 );
 
-void refreshTradeData();
+onMounted(async () => {
+  await Promise.all([refreshTradeData(), loadTemplates()]);
+});
 </script>
 
 <template>
   <section class="panel">
     <header class="panel-head">
       <div>
-        <h2>交易执行台</h2>
+        <h2>套利执行终端</h2>
         <p>仓位：{{ positionsCount }} | 订单：{{ ordersCount }}</p>
       </div>
       <div class="head-actions">
-        <button type="button" class="ghost" @click="router.push('/settings/api')">去配置 API</button>
+        <button type="button" class="ghost" @click="router.push('/monitor')">去监控页</button>
+        <button type="button" class="ghost" @click="router.push('/settings/api')">API 设置</button>
       </div>
     </header>
+
+    <section class="template-card">
+      <div class="template-head">
+        <h3>策略模板</h3>
+        <button type="button" class="ghost" :disabled="templatesLoading" @click="loadTemplates">
+          {{ templatesLoading ? '刷新中...' : '刷新模板' }}
+        </button>
+      </div>
+
+      <div class="template-grid">
+        <label>
+          <span>选择模板</span>
+          <select :value="selectedTemplateId" @change="onTemplateSelect">
+            <option value="">请选择模板</option>
+            <option v-for="item in templates" :key="item.id" :value="item.id">
+              {{ item.name }} ({{ item.symbol }} | {{ item.long_exchange }}/{{ item.short_exchange }})
+            </option>
+          </select>
+        </label>
+
+        <label>
+          <span>模板名称</span>
+          <input v-model.trim="templateName" placeholder="例如 BTC_跨所_8h" />
+        </label>
+      </div>
+
+      <div class="template-actions">
+        <button type="button" class="mini" :disabled="templateBusy" @click="saveAsTemplate">另存为模板</button>
+        <button type="button" class="mini" :disabled="templateBusy || !selectedTemplateId" @click="updateCurrentTemplate">更新当前模板</button>
+        <button type="button" class="mini danger" :disabled="templateBusy || !selectedTemplateId" @click="removeCurrentTemplate">删除当前模板</button>
+      </div>
+
+      <p v-if="templateError" class="feedback error">{{ templateError }}</p>
+      <p v-if="templateMessage" class="feedback ok">{{ templateMessage }}</p>
+    </section>
 
     <section class="selected-card">
       <div class="row">
@@ -284,7 +470,7 @@ void refreshTradeData();
           type="button"
           class="tab"
           :class="{ active: option.value === currentAction }"
-          @click="selectAction(option.value)"
+          @click="currentAction = option.value"
         >
           {{ option.label }}
         </button>
@@ -363,8 +549,8 @@ void refreshTradeData();
         </label>
 
         <label v-if="currentAction === 'emergency-close'" class="full">
-          <span>指定仓位ID（逗号分隔，可空）</span>
-          <input v-model.trim="form.positionIdsText" placeholder="如：id1,id2,id3" />
+          <span>指定仓位 ID（逗号分隔，可空）</span>
+          <input v-model.trim="form.positionIdsText" placeholder="例如 id1,id2,id3" />
         </label>
 
         <label class="full">
@@ -381,7 +567,7 @@ void refreshTradeData();
             <span>启用</span>
           </label>
         </div>
-        <p class="credential-tip">默认使用后端托管凭据；启用后将优先使用本次填写的凭据覆盖。</p>
+        <p class="credential-tip">默认使用后端托管凭据；启用后优先使用本次填写的凭据覆盖。</p>
 
         <div v-if="useManualCredentials" class="credential-grid">
           <div class="credential-item">
@@ -454,6 +640,7 @@ void refreshTradeData();
 .head-actions {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .ghost {
@@ -467,6 +654,81 @@ void refreshTradeData();
 
 .ghost:hover {
   border-color: var(--accent);
+}
+
+.template-card {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.template-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.template-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.template-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.template-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.template-grid span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.template-grid input,
+.template-grid select {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  background: #111927;
+  color: var(--text-main);
+  border-radius: 2px;
+  padding: 7px 10px;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.template-grid input:focus,
+.template-grid select:focus {
+  border-color: var(--accent);
+}
+
+.template-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mini {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-soft);
+  background: #131c28;
+  color: var(--text-main);
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.mini.danger {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ffd0d0;
 }
 
 .selected-card {
@@ -662,11 +924,21 @@ void refreshTradeData();
   color: #ffd3d3;
 }
 
+.feedback.ok {
+  border-color: rgba(16, 185, 129, 0.65);
+  background: rgba(16, 185, 129, 0.12);
+  color: #baf7dd;
+}
+
 .feedback.result {
   color: #b8f5e8;
 }
 
 @media (max-width: 1024px) {
+  .template-grid {
+    grid-template-columns: 1fr;
+  }
+
   .credential-grid {
     grid-template-columns: 1fr;
   }
